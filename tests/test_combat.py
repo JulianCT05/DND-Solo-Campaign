@@ -346,6 +346,7 @@ def test_touch_spell_out_of_range_and_one_slot_per_turn():
 # ------------------------------------------------------------------ exploration
 def test_walking_into_view_of_an_awake_enemy_starts_combat():
     st = build(party=(P(BARB, 1, 1),), enemies=(("giant_frog", "frog_1", (10, 1), "melee_rush"),))
+    st["location"]["light"] = "dim"           # frog: darkvision 30 ft -> spots you at 30 ft
     flow = flow_for(st, seed=2)
     res = check(flow.submit(req("barbarian_1", {"type": "move", "to": {"x": 8, "y": 1}})), st)
     assert G.pos(st["party"][0]["position"]) == (4, 1)    # stopped when spotted (30 ft)

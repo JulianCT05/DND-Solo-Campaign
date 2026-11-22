@@ -28,7 +28,12 @@ from .spells import SPELLS
 
 SCHEMA_VERSION = "1.0.0"
 RECENT_EVENTS_MAX = 30
-AGGRO_FT = 30            # an awake enemy that can see a party member this close starts combat
+# How far an awake enemy can spot the party, by the room's light (state.location.light).
+# Darkvision treats darkness as dim and dim as bright, out to its range.
+# Blindsight notices anything within its range.
+SPOT_FT = {"bright": 60, "dim": 30, "darkness": 0}
+DIM_PERCEPTION_PENALTY = 5   # lightly obscured: disadvantage on Perception = -5 to passive
+HIDE_DC = 15                 # 2024 Hide action
 FLEE_ESCAPE_FT = 60      # a fleeing enemy this far from (or out of sight of) the party leaves combat
 FOLLOW_FT = 10           # allies stay this close to the player while exploring
 MAX_AI_TURNS = 200       # safety stop for the automatic turn loop
@@ -38,7 +43,7 @@ SPEED_ZERO = {"grappled", "restrained", "paralyzed", "stunned", "unconscious", "
 
 # Range and casting time for the spells EJ's engine resolves. range 0 = self, 5 = touch.
 SPELL_INFO = {
-    "sacred_flame":    {"range_ft": 60,  "time": "action",       "hostile": True},
+    "sacred_flame":    {"range_ft": 60,  "time": "action",       "hostile": True, "ignores_cover": True},
     "guiding_bolt":    {"range_ft": 120, "time": "action",       "hostile": True},
     "cure_wounds":     {"range_ft": 5,   "time": "action",       "hostile": False},
     "bless":           {"range_ft": 30,  "time": "action",       "hostile": False},
@@ -60,6 +65,8 @@ class CombatFlow:
         self.dice = dice or Dice(state.get("rng_seed"))
         self.rules = Rules(state, self.data, self.dice)
         self.full_log = []   # every event this process has produced; the API appends it to disk
+        for c in self.everyone():
+            c.setdefault("size", self.stats(c).get("size", "Medium"))
 
     # =================================================================== lookups
     def everyone(self):
@@ -281,11 +288,17 @@ class CombatFlow:
                     events += oa_events
                 if not actor["alive"]:
                     break
-            step = g.enter_cost(cell, self.can_swim(actor)) * (2 if crawling else 1)
+            before = set(G.footprint(actor, cur))
+            entered = [p for p in G.footprint(actor, cell) if p not in before] or [cell]
+            step = max(g.enter_cost(p, self.can_swim(actor)) for p in entered) * (2 if crawling else 1)
             spent += step
             walked.append(cell)
             cur = cell
             actor["position"] = G.as_dict(cur)
+            if combat:
+                events += self._readied_triggers(actor)
+                if not actor["alive"]:
+                    break
         if combat:
             t = self.turn(actor)
             t["movement_left_ft"] = max(0, t["movement_left_ft"] - spent)
@@ -311,16 +324,85 @@ class CombatFlow:
                 return
             if self.incapacitated(h) or not self.turn(h)["reaction"]:
                 continue
+            if h.get("controller") == "player" and not self.state["flags"].get("auto_opportunity_attacks", True):
+                continue  # the player turned automatic opportunity attacks off
             reach = self.reach_ft(h)
-            hp = G.pos(h["position"])
-            if G.distance_ft(hp, frm) <= reach and G.distance_ft(hp, to) > reach:
+            if G.distance_ft(h, G.at(mover, frm)) <= reach and G.distance_ft(h, G.at(mover, to)) > reach:
                 w = self.melee_weapon(h)
                 if w is None:
                     continue
                 self.turn(h)["reaction"] = False
-                evs = self.rules.resolve(h["id"], {"type": "attack", "target_id": mover["id"],
-                                                    "weapon": w["name"]})
+                evs = self._resolve_with_cover(h["id"], {"type": "attack", "target_id": mover["id"],
+                                                          "weapon": w["name"]},
+                                               {mover["id"]: self.cover_bonus(h, mover)})
                 yield evs, h["id"]
+
+    # =================================================================== ready
+    def do_ready(self, actor, action):
+        """Ready an attack (2024 Ready action, attack only in this prototype).
+        The trigger is fixed: an enemy (the target_id one, if given) moves into
+        reach of your melee weapon, or into range and sight of your ranged one.
+        It costs your action now and your reaction when it fires, and lasts
+        until the start of your next turn."""
+        aid = actor["id"]
+        if not self.in_combat():
+            return [self._reject(aid, "unknown_command", "You can only ready an action during combat.")]
+        target = None
+        if action.get("target_id"):
+            target = self.get(action["target_id"])
+            if target is None or not target["alive"] or not self.hostile(actor, target):
+                return [self._reject(aid, "invalid_target", "Ready needs an enemy as the target, or no target.")]
+        melee = [w for w in self.data.weapons(self.stats(actor)) if G.weapon_range(w)[0] == "melee"]
+        ranged = [w for w in self.data.weapons(self.stats(actor)) if G.weapon_range(w)[0] == "ranged"]
+        far = target is not None and G.distance_ft(actor, target) > self.reach_ft(actor)
+        weapon = (ranged[0] if (far or not melee) and ranged else (melee or ranged or [None])[0])
+        if weapon is None:
+            return [self._reject(aid, "no_resource", f"{actor['name']} has no attack to ready.")]
+        if not self.turn(actor)["reaction"]:
+            return [self._reject(aid, "no_action_left", "You've already used your reaction this round.")]
+        why = self.spend(actor, "action")
+        if why:
+            return [self._reject(aid, *why)]
+        e = self.rules.add_effect(actor, "Readied", source_id=aid,
+                                  target_id=target["id"] if target else None, rounds_left=None)
+        e["data"] = {"weapon": weapon["name"]}
+        ev = {"type": "condition", "seq": 0, "actor_id": aid, "target_id": aid,
+              "condition": "Readied", "change": "applied", "source": "ready"}
+        hint = f"{actor['name']} readies {weapon['name']}" + (f" against {target['name']}" if target else "")
+        return [ev], hint
+
+    def _readied_triggers(self, mover):
+        """After each square `mover` steps into, fire any enemy's readied attack
+        whose trigger it just met."""
+        events = []
+        for r in self.everyone():
+            if not mover["alive"]:
+                break
+            e = self.rules.effect(r, "Readied")
+            if e is None or not r["alive"] or not self.hostile(r, mover) or self.incapacitated(r):
+                continue
+            if e.get("target_id") and e["target_id"] != mover["id"]:
+                continue
+            if not self.turn(r)["reaction"]:
+                continue
+            weapon = self.data.find_weapon(self.stats(r), e.get("data", {}).get("weapon"))
+            if weapon is None:
+                continue
+            kind, normal, long_ = G.weapon_range(weapon)
+            dist = G.distance_ft(r, mover)
+            if kind == "melee" and dist > normal:
+                continue
+            err, adv, dis, _ = self.attack_situation(r, mover, weapon)
+            if err:
+                continue
+            self.turn(r)["reaction"] = False
+            self.rules.remove_effect(r, "Readied")
+            events.append({"type": "condition", "seq": 0, "actor_id": r["id"], "target_id": r["id"],
+                           "condition": "Readied", "change": "removed", "source": "trigger"})
+            events += self._resolve_with_cover(r["id"], {"type": "attack", "target_id": mover["id"],
+                                                         "weapon": weapon["name"]},
+                                               {mover["id"]: self.cover_bonus(r, mover)}, adv, dis)
+        return events
 
     def _allies_follow(self, player):
         events = []
@@ -328,7 +410,7 @@ class CombatFlow:
         for ally in self.state["party"]:
             if ally is player or not ally["alive"]:
                 continue
-            if G.distance_ft(ally["position"], ppos) <= FOLLOW_FT:
+            if G.distance_ft(ally, ppos) <= FOLLOW_FT:
                 continue
             g = self.grid()
             goals = [(ppos[0] + dx, ppos[1] + dy) for dx in range(-2, 3) for dy in range(-2, 3)
@@ -353,18 +435,21 @@ class CombatFlow:
         (error_or_None, adv_list, dis_list, is_ranged)."""
         g = self.grid()
         kind, normal, long_ = G.weapon_range(weapon, thrown)
-        dist = G.distance_ft(actor["position"], target["position"])
+        dist = G.distance_ft(actor, target)
         if dist > long_:
             return (("out_of_range", f"{target['name']} is {dist} ft away; your {weapon['name']} "
                      f"reaches {long_} ft."), [], [], kind == "ranged")
-        if not g.line_of_sight(actor["position"], target["position"]):
+        if not g.line_of_sight(actor, target):
             return (("no_line_of_sight", f"You can't see {target['name']} from there."), [], [],
+                    kind == "ranged")
+        if g.cover(actor, target) is None:
+            return (("no_line_of_sight", f"{target['name']} is behind total cover."), [], [],
                     kind == "ranged")
         adv, dis = [], []
         if kind == "ranged":
             if dist > normal:
                 dis.append("long_range")
-            if any(G.adjacent(h["position"], actor["position"]) and not self.incapacitated(h)
+            if any(G.adjacent(h, actor) and not self.incapacitated(h)
                    for h in self.living_hostiles_of(actor)):
                 dis.append("hostile_adjacent")
         if self.rules.effect(target, "Dodge") and not self.incapacitated(target):
@@ -374,6 +459,26 @@ class CombatFlow:
         if self.rules.effect(actor, "Hidden"):
             adv.append("hidden")
         return None, adv, dis, kind == "ranged"
+
+    def cover_bonus(self, attacker, target):
+        """0, 2 (half) or 5 (three-quarters). Total cover is handled as no line of sight."""
+        return self.grid().cover(attacker, target) or 0
+
+    def _resolve_with_cover(self, actor_id, action, bonuses, adv=(), dis=()):
+        """Run EJ's resolve() with a temporary Cover effect on each target that
+        has one, so his AC and Dex-save code adds the bonus. Removed afterwards."""
+        added = []
+        for tid, bonus in bonuses.items():
+            t = self.get(tid)
+            if bonus and t is not None:
+                t.setdefault("effects", []).append({"name": "Cover", "source_id": "_cover",
+                                                    "data": {"bonus": bonus}})
+                added.append(t)
+        try:
+            return self.rules.resolve(actor_id, action, adv=adv, dis=dis)
+        finally:
+            for t in added:
+                self.rules.remove_effect(t, "Cover", source_id="_cover")
 
     def _consume_attack_buffs(self, actor, target):
         for c, name in ((target, "Helped"), (actor, "Hidden")):
@@ -398,7 +503,7 @@ class CombatFlow:
         notes = (weapon.get("notes") or "").lower()
         thrown = "thrown" in mods
         if not thrown and "thrown" in notes and \
-                G.distance_ft(actor["position"], target["position"]) > self.reach_ft(actor):
+                G.distance_ft(actor, target) > self.reach_ft(actor):
             thrown = True
             mods.append("thrown")
         err, adv, dis, _ranged = self.attack_situation(actor, target, weapon, thrown)
@@ -418,10 +523,14 @@ class CombatFlow:
         act = {"type": "attack", "target_id": target["id"], "weapon": weapon["name"]}
         if mods:
             act["modifiers"] = mods
-        events = self.rules.resolve(aid, act, adv=adv, dis=dis)
+        cover = self.cover_bonus(actor, target)
+        events = self._resolve_with_cover(aid, act, {target["id"]: cover}, adv, dis)
         if any(e["type"] == "rejected" for e in events):
             self.refund(actor, "action")
             return events
+        note = None
+        if cover:
+            note = f"{target['name']} has {'half' if cover == 2 else 'three-quarters'} cover (+{cover} AC)"
         self._consume_attack_buffs(actor, target)
         if self.rules.effect(actor, "Hidden"):
             self.rules.remove_effect(actor, "Hidden")
@@ -429,7 +538,7 @@ class CombatFlow:
             ammo["qty"] -= 1
             events.append({"type": "resource", "seq": 0, "actor_id": aid, "resource": slug(weapon["name"]),
                            "delta": -1, "remaining": ammo["qty"]})
-        return events
+        return (events, note) if note else events
 
     # =================================================================== spells
     def do_cast(self, actor, action):
@@ -449,13 +558,15 @@ class CombatFlow:
         for t in targets:
             if t["id"] == aid:
                 continue
-            dist = G.distance_ft(actor["position"], t["position"])
+            dist = G.distance_ft(actor, t)
             if dist > info["range_ft"]:
                 reach = "touch" if info["range_ft"] == 5 else f"{info['range_ft']} ft"
                 return [self._reject(aid, "out_of_range",
                                      f"{t['name']} is {dist} ft away; that spell's range is {reach}.")]
-            if not g.line_of_sight(actor["position"], t["position"]):
+            if not g.line_of_sight(actor, t):
                 return [self._reject(aid, "no_line_of_sight", f"You can't see {t['name']} from there.")]
+            if info["hostile"] and g.cover(actor, t) is None:
+                return [self._reject(aid, "no_line_of_sight", f"{t['name']} is behind total cover.")]
 
         # 2024 rule: only one spell slot can be spent per turn
         leveled = SPELLS.get(sid, {}).get("level", 0) > 0
@@ -472,7 +583,10 @@ class CombatFlow:
             # spell attacks (Guiding Bolt) get the same ranged-attack penalties
             fake_weapon = {"name": sid, "range": {"normal": info["range_ft"], "long": info["range_ft"]}}
             _, adv, dis, _ = self.attack_situation(actor, targets[0], fake_weapon)
-        events = self.rules.resolve(aid, action, adv=adv, dis=dis)
+        covers = {}
+        if info["hostile"] and not info.get("ignores_cover"):
+            covers = {t["id"]: self.cover_bonus(actor, t) for t in targets if t["id"] != aid}
+        events = self._resolve_with_cover(aid, action, covers, adv, dis)
         if any(e["type"] == "rejected" for e in events):
             self.refund(actor, cost)
             return events
@@ -496,7 +610,7 @@ class CombatFlow:
         target = self.get(target_id)
         if target is None:
             return [self._reject(actor["id"], "invalid_target", "That target isn't here.")]
-        if target_id != actor["id"] and G.distance_ft(actor["position"], target["position"]) > 5:
+        if target_id != actor["id"] and G.distance_ft(actor, target) > 5:
             return [self._reject(actor["id"], "out_of_range", f"You need to be next to {target['name']}.")]
         cost = ITEM_COST.get(action["item"].lower(), "action")
         why = self.spend(actor, cost)
@@ -509,7 +623,7 @@ class CombatFlow:
 
     def do_check(self, actor, action):
         feature = self.feature(action.get("target_id"))
-        if feature and G.distance_ft(actor["position"], feature["position"]) > 5:
+        if feature and G.distance_ft(actor, feature) > 5:
             return [self._reject(actor["id"], "out_of_range", "You need to be next to that first.")]
         why = self.spend(actor, "action")
         if why:
@@ -522,8 +636,7 @@ class CombatFlow:
         t = action["type"]
         combat = self.in_combat()
         if t == "ready":
-            return [self._reject(aid, "unknown_command",
-                                 "Readying an action isn't supported yet. Act now or end your turn.")]
+            return self.do_ready(actor, action)
         if t == "stand_up":
             if not self.rules.has_condition(actor, "prone"):
                 return [self._reject(aid, "invalid_target", "You're already standing.")]
@@ -544,12 +657,20 @@ class CombatFlow:
             target = self.get(action.get("target_id", ""))
             if target is None or not target["alive"] or not self.hostile(actor, target):
                 return [self._reject(aid, "invalid_target", "Help needs an enemy within 5 ft as the target.")]
-            if not G.adjacent(actor["position"], target["position"]):
+            if not G.adjacent(actor, target):
                 return [self._reject(aid, "out_of_range", f"You need to be next to {target['name']}.")]
         if t == "hide":
             g = self.grid()
-            seen_by = [h for h in self.living_hostiles_of(actor)
-                       if g.line_of_sight(h["position"], actor["position"])]
+            if combat:   # 2024: you must be out of every enemy's line of sight
+                seen_by = [h for h in self.living_hostiles_of(actor) if g.line_of_sight(h, actor)]
+            else:        # exploring: you can't hide from an enemy that has already noticed you
+                was = self.rules.effect(actor, "Hidden")
+                if was:
+                    self.rules.remove_effect(actor, "Hidden")
+                seen_by = [h for h in self.living_hostiles_of(actor)
+                           if h.get("ai", {}).get("awake", True) and self.notices(h, actor, g)]
+                if was:
+                    actor.setdefault("effects", []).append(was)
             if seen_by:
                 return [self._reject(aid, "condition_prevents",
                                      f"{seen_by[0]['name']} can see you; get out of sight first.")]
@@ -575,9 +696,10 @@ class CombatFlow:
                      "condition": "Helped", "change": "applied", "source": "help", "rounds": 1}]
         if t == "hide":
             log = []
-            ok = self._check(log, aid, "dex", "stealth", 15, "hide")
+            ok = self._check(log, aid, "dex", "stealth", HIDE_DC, "hide")
             if ok:
-                self.rules.add_effect(actor, "Hidden", source_id=aid, rounds_left=None)
+                e = self.rules.add_effect(actor, "Hidden", source_id=aid, rounds_left=None)
+                e["data"] = {"stealth": log[-1]["roll"]["total"]}
                 log.append({"type": "condition", "seq": 0, "actor_id": aid, "target_id": aid,
                             "condition": "Hidden", "change": "applied", "source": "hide"})
             return log
@@ -605,7 +727,7 @@ class CombatFlow:
         verb = action["verb"]
         if f is None:
             return [self._reject(aid, "invalid_target", f"There's no {action['object_id']} here.")]
-        if G.distance_ft(actor["position"], f["position"]) > 5:
+        if G.distance_ft(actor, f) > 5:
             return [self._reject(aid, "out_of_range", "You need to be next to that first.")]
 
         # cost: 'force' and 'disarm' are checks (action); the rest use the free object interaction
@@ -683,9 +805,59 @@ class CombatFlow:
         return self.rules.rest(action["kind"])
 
     # =================================================================== combat start / end
+    # =================================================================== spotting
+    def senses(self, c):
+        """{'darkvision': ft, 'blindsight': ft, 'passive': n} from the stat block's
+        senses text, e.g. 'darkvision 60 ft., passive Perception 12'."""
+        import re
+        text = str(self.stats(c).get("senses") or "")
+        def num(pattern, default=0):
+            m = re.search(pattern, text, re.I)
+            return int(m.group(1)) if m else default
+        passive = num(r"passive perception\s*(\d+)", 10)
+        return {"darkvision": num(r"darkvision\s*(\d+)"), "blindsight": num(r"blindsight\s*(\d+)"),
+                "passive": passive}
+
+    def spot_range(self, watcher):
+        """(range_ft, sees_as) for this creature in the room's light."""
+        light = self.state.get("location", {}).get("light", "bright")
+        dv = self.senses(watcher)["darkvision"]
+        if light == "bright":
+            return SPOT_FT["bright"], "bright"
+        if light == "dim":
+            if dv:
+                return max(SPOT_FT["dim"], min(dv, SPOT_FT["bright"])), "bright"
+            return SPOT_FT["dim"], "dim"
+        # darkness
+        if dv:
+            return min(dv, SPOT_FT["dim"]), "dim"
+        return SPOT_FT["darkness"], "dark"
+
+    def notices(self, watcher, target, g=None):
+        """Would this enemy notice that party member right now? Needs line of
+        sight and the target within spotting range for the light, unless the
+        watcher's blindsight covers it. A Hidden target is only noticed if the
+        watcher's passive Perception (-5 in dim light) beats the Stealth roll."""
+        g = g or self.grid()
+        if not watcher["alive"] or not target["alive"]:
+            return False
+        dist = G.distance_ft(watcher, target)
+        if not g.line_of_sight(watcher, target):
+            return False
+        sn = self.senses(watcher)
+        if sn["blindsight"] and dist <= sn["blindsight"]:
+            return True
+        rng, sees_as = self.spot_range(watcher)
+        if dist > rng:
+            return False
+        hidden = self.rules.effect(target, "Hidden")
+        if hidden:
+            passive = sn["passive"] - (DIM_PERCEPTION_PENALTY if sees_as == "dim" else 0)
+            return passive >= hidden.get("data", {}).get("stealth", HIDE_DC)
+        return True
+
     def check_aggro(self, dry_run=False):
-        """In exploration, an awake enemy that can see a party member within
-        AGGRO_FT starts combat."""
+        """In exploration, an awake enemy that notices a party member starts combat."""
         if self.state["mode"] != "exploration":
             return []
         g = self.grid()
@@ -693,8 +865,7 @@ class CombatFlow:
             if not e["alive"] or self.fled(e) or not e.get("ai", {}).get("awake", True):
                 continue
             for pc in self.state["party"]:
-                if pc["alive"] and G.distance_ft(e["position"], pc["position"]) <= AGGRO_FT \
-                        and g.line_of_sight(e["position"], pc["position"]):
+                if self.notices(e, pc, g):
                     if dry_run:
                         return [True]
                     return self.start_combat()
@@ -709,7 +880,11 @@ class CombatFlow:
         enemies = [e for e in self.state["enemies"] if e["alive"] and not self.fled(e)]
         party = [p for p in self.state["party"] if p["alive"]]
         if surprised is None:
-            surprised = [e["id"] for e in enemies if not e.get("ai", {}).get("awake", True)]
+            # asleep, or never noticed the hidden attacker who started the fight
+            g = self.grid()
+            surprised = [e["id"] for e in enemies if not e.get("ai", {}).get("awake", True)
+                         or (attacker is not None and self.rules.effect(attacker, "Hidden")
+                             and not self.notices(e, attacker, g))]
         for e in enemies:
             e.setdefault("ai", {"tactic": "melee_rush", "awake": True, "target_id": None})["awake"] = True
         everyone = party + enemies
@@ -794,6 +969,9 @@ class CombatFlow:
                            "condition": "Dodge", "change": "expired"})
         for o in self.everyone():
             self.rules.remove_effect(o, "Helped", source_id=cid)
+        if self.rules.remove_effect(c, "Readied"):
+            events.append({"type": "condition", "seq": 0, "actor_id": cid, "target_id": cid,
+                           "condition": "Readied", "change": "expired"})
         # a creature that was surprised loses that status once its turn comes up
         sur = self.state["combat"].get("surprised_ids")
         if sur and cid in sur:
@@ -896,8 +1074,8 @@ class CombatFlow:
             return []
         g = self.grid()
         party = [p for p in self.state["party"] if p["alive"]]
-        if all(G.distance_ft(c["position"], p["position"]) >= FLEE_ESCAPE_FT or
-               not g.line_of_sight(c["position"], p["position"]) for p in party):
+        if all(G.distance_ft(c, p) >= FLEE_ESCAPE_FT or
+               not g.line_of_sight(c, p) for p in party):
             self.rules.add_effect(c, "Fled", source_id=c["id"], rounds_left=None)
             return [{"type": "state_change", "seq": 0, "actor_id": c["id"],
                      "field": f"{c['id']}.fled", "value": True}]

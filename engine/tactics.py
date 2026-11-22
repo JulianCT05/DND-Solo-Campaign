@@ -53,8 +53,7 @@ def _done(flow, c):
 
 
 def nearest(flow, c, candidates):
-    cp = G.pos(c["position"])
-    return min(candidates, key=lambda o: (G.distance_ft(cp, o["position"]), o["hp"], o["id"]), default=None)
+    return min(candidates, key=lambda o: (G.distance_ft(c, o), o["hp"], o["id"]), default=None)
 
 
 def pick_target(flow, c, weakest=False, visible_first=False):
@@ -63,11 +62,11 @@ def pick_target(flow, c, weakest=False, visible_first=False):
         return None
     if visible_first:
         g = flow.grid()
-        seen = [f for f in foes if g.line_of_sight(c["position"], f["position"])]
+        seen = [f for f in foes if g.line_of_sight(c, f)]
         foes = seen or foes
         return nearest(flow, c, foes)
     if weakest:
-        return min(foes, key=lambda o: (o["hp"], G.distance_ft(c["position"], o["position"]), o["id"]))
+        return min(foes, key=lambda o: (o["hp"], G.distance_ft(c, o), o["id"]))
     ai = c.get("ai")
     if ai and ai.get("target_id"):
         cur = flow.get(ai["target_id"])
@@ -76,25 +75,34 @@ def pick_target(flow, c, weakest=False, visible_first=False):
     return nearest(flow, c, foes)
 
 
-def cells_around(p, radius_ft, max_cells=60):
+def cells_around(p, radius_ft, max_cells=60, mover=None):
+    """Candidate top-left cells within radius of p (a cell or a creature). For a
+    Large target or mover the box grows so every footprint that could touch is included."""
     x, y = G.pos(p)
+    extra = G.size_cells(p) + (G.size_cells(mover) if mover else 1) - 1
     n = min(radius_ft // 5, max_cells)
-    return [(x + dx, y + dy) for dx in range(-n, n + 1) for dy in range(-n, n + 1) if (dx, dy) != (0, 0)]
+    return [(x + dx, y + dy) for dx in range(-n - extra, n + extra + 1)
+            for dy in range(-n - extra, n + extra + 1) if (dx, dy) != (0, 0)]
 
 
-def approach(flow, c, target, within_ft, out, allow_dash=True):
+def approach(flow, c, target, within_ft, out, allow_dash=True, _door_tries=2):
     """Move toward target until within `within_ft` of it with line of sight.
-    Dashes if needed and allowed. Returns True if in position afterwards."""
+    Dashes if needed and allowed. If the only way there is through a closed
+    (not locked) door, walks to the door and opens it first.
+    Returns True if in position afterwards."""
     g = flow.grid()
 
     def in_position(p):
-        return G.distance_ft(p, target["position"]) <= within_ft and g.line_of_sight(p, target["position"])
+        me = G.at(c, p)
+        return G.distance_ft(me, target) <= within_ft and g.line_of_sight(me, target)
     if in_position(c["position"]):
         return True
-    goals = [p for p in cells_around(target["position"], within_ft)
-             if g.in_bounds(p) and not g.blocks_movement(p) and in_position(p)]
+    goals = [p for p in cells_around(target, within_ft, mover=c)
+             if g.fits(c, p) and in_position(p)]
     budget = flow.turn(c)["movement_left_ft"]
     path, feet, reached = G.best_step_toward(g, c, goals, budget, can_swim=flow.can_swim(c))
+    if not path and not reached and _door_tries > 0 and open_door_on_the_way(flow, c, goals, out):
+        return approach(flow, c, target, within_ft, out, allow_dash, _door_tries - 1)
     if not reached and allow_dash and flow.turn(c)["action"]:
         # too far to reach this turn: Dash, then go as far as possible
         full, _, _ = G.best_step_toward(g, c, goals, budget + flow.speed(c), can_swim=flow.can_swim(c))
@@ -106,6 +114,39 @@ def approach(flow, c, target, within_ft, out, allow_dash=True):
     if path:
         _do(flow, c, {"type": "move", "to": G.as_dict(path[-1])}, out)
     return c["alive"] and in_position(c["position"])
+
+
+def open_door_on_the_way(flow, c, goals, out):
+    """No route to the goal: if one exists through closed doors, walk up to the
+    first door and open it. Locked doors stay shut. Returns True if a door opened."""
+    g = flow.grid()
+    g_doors = G.Grid(flow.state["map"], flow.everyone(), open_doors=True)
+    full, _, _ = G.best_step_toward(g_doors, c, goals, G.INF, can_swim=flow.can_swim(c))
+    door = None
+    for i, cell in enumerate(full):
+        shut = [p for p in G.footprint(c, cell) if g.door_closed(p)]
+        if shut:
+            door, before = shut[0], full[:i]
+            break
+    if door is None:
+        return False
+    feature = next(f for f in flow.state["map"]["features"] if G.pos(f["position"]) == door)
+    if G.distance_ft(c, door) > 5:
+        stop = next((p for p in reversed(before) if G.distance_ft(G.at(c, p), door) <= 5), None)
+        if stop is None:
+            return False
+        path, feet = G.path_to(g, c, stop, flow.turn(c)["movement_left_ft"], can_swim=flow.can_swim(c))
+        if path is None:
+            # too far this turn: get as close as possible along the route
+            step, _, _ = G.best_step_toward(g, c, [stop], flow.turn(c)["movement_left_ft"],
+                                            can_swim=flow.can_swim(c))
+            if step:
+                _do(flow, c, {"type": "move", "to": G.as_dict(step[-1])}, out)
+            return False
+        _do(flow, c, {"type": "move", "to": G.as_dict(stop)}, out)
+    if _done(flow, c) or G.distance_ft(c, door) > 5:
+        return False
+    return _do(flow, c, {"type": "interact", "object_id": feature["id"], "verb": "open"}, out)
 
 
 def retreat(flow, c, out, keep_in_range_of=None, max_ft=None):
@@ -120,12 +161,12 @@ def retreat(flow, c, out, keep_in_range_of=None, max_ft=None):
         cells = {p: f for p, f in cells.items() if f <= max_ft}
 
     def score(p):
-        return min(G.distance_ft(p, f["position"]) for f in foes)
+        return min(G.distance_ft(G.at(c, p), f) for f in foes)
     options = list(cells)
     if keep_in_range_of:
         tgt, rng = keep_in_range_of
-        options = [p for p in options if G.distance_ft(p, tgt["position"]) <= rng
-                   and g.line_of_sight(p, tgt["position"])]
+        options = [p for p in options if G.distance_ft(G.at(c, p), tgt) <= rng
+                   and g.line_of_sight(G.at(c, p), tgt)]
     here = score(c["position"])
     best = max(options, key=lambda p: (score(p), -cells[p], p), default=None)
     if best is not None and score(best) > here:
@@ -148,7 +189,7 @@ def attack_if_adjacent(flow, c, out, prefer=None):
     if not melee:
         return False
     reach = flow.reach_ft(c)
-    foes = [f for f in flow.living_hostiles_of(c) if G.distance_ft(c["position"], f["position"]) <= reach]
+    foes = [f for f in flow.living_hostiles_of(c) if G.distance_ft(c, f) <= reach]
     if not foes:
         return False
     target = prefer if prefer in foes else min(foes, key=lambda f: (f["hp"], f["id"]))
@@ -189,7 +230,7 @@ def flee_at_half(flow, c):
         flow.rules.add_effect(c, "Fleeing", source_id=c["id"], rounds_left=None)
         out.append({"type": "condition", "seq": 0, "actor_id": c["id"], "target_id": c["id"],
                     "condition": "Fleeing", "change": "applied", "source": "flee_at_half"})
-    adjacent = any(G.adjacent(f["position"], c["position"]) for f in flow.living_hostiles_of(c))
+    adjacent = any(G.adjacent(f, c) for f in flow.living_hostiles_of(c))
     if flow.turn(c)["action"]:
         _do(flow, c, {"type": "disengage" if adjacent else "dash"}, out)
     retreat(flow, c, out)
@@ -214,7 +255,7 @@ def ranged_kite(flow, c):
     if target is None:
         return out
     _set_target(c, target)
-    if any(G.adjacent(f["position"], c["position"]) for f in flow.living_hostiles_of(c)):
+    if any(G.adjacent(f, c) for f in flow.living_hostiles_of(c)):
         retreat(flow, c, out, keep_in_range_of=(target, normal))
     if _done(flow, c):
         return out
@@ -226,7 +267,7 @@ def ranged_kite(flow, c):
 
 def guard(flow, c):
     out = []
-    foes = [f for f in flow.living_hostiles_of(c) if G.distance_ft(c["position"], f["position"]) <= 15]
+    foes = [f for f in flow.living_hostiles_of(c) if G.distance_ft(c, f) <= 15]
     if not foes:
         return out  # hold position
     target = nearest(flow, c, foes)
@@ -262,7 +303,7 @@ def cleric_turn(flow, c):  # noqa: C901
         return out
     if flow.state["combat"]["round"] == 1 and not c.get("concentrating_on") \
             and _has_slot(c) and _prepared(c, "bless"):
-        near = [p for p in party if G.distance_ft(c["position"], p["position"]) <= 30]
+        near = [p for p in party if G.distance_ft(c, p) <= 30]
         near.sort(key=lambda p: (p["controller"] != "player", p["id"] != c["id"], p["id"]))
         if _do(flow, c, {"type": "cast", "spell_id": "bless", "slot_level": 1,
                          "target_ids": [p["id"] for p in near[:3]]}, out):
@@ -291,13 +332,13 @@ def ranger_turn(flow, c):
     can_mark = _prepared(c, "hunters_mark") and (
         (free and free["used"] < free["max"]) or _has_slot(c))
     if conc.get("spell_id") != "hunters_mark" and can_mark \
-            and G.distance_ft(c["position"], target["position"]) <= 90 \
-            and g.line_of_sight(c["position"], target["position"]):
+            and G.distance_ft(c, target) <= 90 \
+            and g.line_of_sight(c, target):
         _do(flow, c, {"type": "cast", "spell_id": "hunters_mark", "target_ids": [target["id"]]}, out)
     if _done(flow, c):
         return out
     melee, ranged = weapon_options(flow, c)
-    adjacent = [f for f in flow.living_hostiles_of(c) if G.adjacent(f["position"], c["position"])]
+    adjacent = [f for f in flow.living_hostiles_of(c) if G.adjacent(f, c)]
     if adjacent and melee:
         prefer = target if target in adjacent else adjacent[0]
         _do(flow, c, {"type": "attack", "target_id": prefer["id"], "weapon": melee[0]["name"]}, out)

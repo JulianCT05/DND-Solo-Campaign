@@ -46,10 +46,12 @@ def new_game(data, character, room_id="demo_cellar", allies=None, seed=None, ses
         cell = spawn[i] if i < len(spawn) else spawn[-1]
         party.append(data.new_pc(ref, INSTANCE_IDS.get(ref, f"{ref}_1"),
                                  "player" if i == 0 else "engine_ally", tuple(cell)))
+        party[-1]["size"] = data.stats(ref).get("size", "Medium")
     enemies = []
     for e in room.get("enemies", []):
         en = data.new_enemy(e["ref"], e["id"], tuple(e["position"]), e.get("tactic", "melee_rush"))
         en["ai"]["awake"] = e.get("awake", True)
+        en["size"] = data.stats(e["ref"]).get("size", "Medium")
         enemies.append(en)
     inventory = []
     for pc in party:
