@@ -90,9 +90,15 @@ def _play(svc, sid, max_turns=40):
             path, _, _ = G.best_step_toward(flow.grid(), me, goals, budget)
             if path:
                 acts.append({"type": "move", "to": G.as_dict(path[-1])})
-        acts.append({"type": "attack", "target_id": target["id"]})
+            end = path[-1] if path else G.pos(me)
+        else:
+            end = G.pos(me)
+        if G.adjacent(G.at(me, end), target):     # only swing if the move gets us there
+            acts.append({"type": "attack", "target_id": target["id"]})
         if st["mode"] == "combat":
             acts.append({"type": "end_turn"})
+        if not acts:
+            break
         out = svc.submit(sid, req("barbarian_1", *acts))
         for tr in out["turn_results"]:
             assert validate_turn_result(tr) == [], validate_turn_result(tr)

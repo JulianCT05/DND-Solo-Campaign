@@ -17,7 +17,7 @@ play_demo.py        seeded game printed as a dice log (no server needed)
 
 ```
 pip install -r requirements.txt
-python -m pytest                    # 98 tests (EJ's 27 + 71 for this part)
+python -m pytest                    # 124 tests + 1 that needs FastAPI (EJ's 27, the rest for this part)
 python play_demo.py 11              # same seed = same fight
 uvicorn api.server:app --reload     # http://127.0.0.1:8000/docs
 ```
@@ -36,6 +36,14 @@ uvicorn api.server:app --reload     # http://127.0.0.1:8000/docs
 | GET | `/games/{id}/reachable?actor_id=barbarian_1` | `[{"x","y","feet"}]` cells that creature can move to now (for movement highlights) |
 | POST | `/games/{id}/save` | write to disk (this also happens automatically after every action) |
 | POST | `/games/{id}/load` | reload from disk |
+| PUT | `/games/{id}/settings` | player options. Body: `{"auto_opportunity_attacks": false}` turns off the player's automatic opportunity attacks. Unknown keys or non-true/false values get 422. |
+
+When Josh's `llm` package sits at the repo root (next to `engine/`, as his
+`LLM_LAYER.md` describes), `server.py` also mounts his routes on the same game
+service: `POST /games/{id}/say` (typed text, then parser, then engine, then
+narrator), `POST /games/{id}/act` (a narrated GUI click), `PUT /games/{id}/summary`
+and `GET /llm/status`. If the package isn't there, the engine endpoints above
+still work on their own.
 
 Errors: 404 for an unknown game id. 422 when the body doesn't match the schema,
 with `detail.errors` listing what's wrong.
@@ -93,14 +101,15 @@ defaults keep the old behaviour, and all 27 of your tests still pass. Please che
 ## Rules implemented
 
 - **Modes.** In `exploration` there are no turns or movement limits, and allies
-  follow the player. An awake enemy that sees a party member within 30 ft starts
-  combat. The player stops walking the moment they're spotted. Attacking or casting
+  follow the player. An awake enemy that **notices** a party member starts combat
+  (see Spotting below), and the player stops walking the moment they're noticed. Attacking or casting
   at an enemy also starts combat; if the player wins initiative, the attack happens
   right away. Combat ends in `victory` when no enemy in the fight is left (dead or
   fled), or `game_over` when the player dies (house rule: 0 HP = death).
 - **Initiative.** Initiative is d20 plus the pregen's initiative bonus (enemies use
   their Dex modifier). Ties go to the higher bonus, then higher Dex, then the party.
-  Surprised (sleeping) enemies roll with disadvantage. Dead and fled creatures drop
+  Surprised enemies roll with disadvantage: ones that were asleep, and ones that
+  never noticed a hidden player who starts the fight. Dead and fled creatures drop
   out of the order.
 - **Turn budget.** Every creature gets one action, one bonus action, one reaction,
   its speed in movement, and one free object interaction. Costs:
@@ -117,15 +126,54 @@ defaults keep the old behaviour, and all 27 of your tests still pass. Please che
   but not stop on them, you can't pass through living enemies, corpses don't block,
   and you can't squeeze diagonally between two walls. Grappled or restrained
   creatures have speed 0.
+- **Creature size.** Each creature has a `size` from its stat block. Large
+  creatures fill 2x2 squares (Huge 3x3, Gargantuan 4x4), and `position` is the
+  top-left square. Distance, reach, adjacency, line of sight, areas and opportunity
+  attacks all use the closest squares. A Large creature needs a 2-square-wide gap
+  to move through. The giant octopus is the Large creature in our data.
 - **Range and line of sight.** Melee uses 5 ft reach. Ranged and thrown weapons
   read their ranges from the notes ("Thrown 20/60", "120/600"). Attacks between
   normal and long range have disadvantage, and beyond long range they're rejected.
   A ranged attack with an enemy adjacent has disadvantage. Thrown javelins come out
   of the inventory. Spells use the range table in `combat.py` (`SPELL_INFO`).
-  Attacks and spells need line of sight; walls and closed doors block it.
+  Reach also reads "reach 10 ft." from a weapon's notes.
+- **Line of sight and cover** (DMG grid method). From the attacker's best corner,
+  draw lines to the four corners of the target's square:
+  - **0 lines blocked:** no cover.
+  - **1–2 blocked:** half cover, +2 AC and +2 to Dex saves.
+  - **3 blocked:** three-quarters cover, +5.
+  - **All 4 blocked:** total cover. The target can't be seen or targeted.
+
+  A line that only grazes the edge of a wall square isn't blocked. A line along
+  the seam between two wall squares, or through the corner where two walls meet
+  diagonally, is blocked. Another creature, or a `cover` map feature, on every
+  line gives half cover. Sacred Flame ignores cover (2024 text). The bonus goes to
+  EJ's AC and save code as a temporary `Cover` effect that's removed right after
+  the roll. The attack's narration hint says when cover applied.
 - **Opportunity attacks.** Leaving a hostile's reach provokes one melee attack,
   which uses that creature's reaction. It happens mid-move and can kill the mover.
-  Disengage prevents it. The move event lists who was provoked.
+  Disengage prevents it. The move event lists who was provoked. The player can
+  turn their own automatic opportunity attacks off with `PUT /settings`.
+- **Ready** (attack only). `{"type": "ready", "target_id": "zombie_1"}` costs your
+  action now. Your readied attack fires as a reaction the moment that enemy (or
+  any enemy, if no target is given) steps into your melee reach. With a bow, it
+  fires when they move into range and view. A melee weapon is used if the target
+  is within reach or no target is given, otherwise the ranged weapon. An unused
+  readied attack expires at the start of your next turn.
+- **Spotting.** The room's light (`location.light`) and each enemy's senses
+  decide how far it can notice you:
+  - **Bright light:** 60 ft.
+  - **Dim light:** 30 ft. Darkvision makes it count as bright light, out to the
+    darkvision range (up to 60 ft).
+  - **Darkness:** nothing without darkvision. With darkvision it counts as dim
+    light, out to 30 ft.
+  - **Blindsight:** notices anything within its range.
+
+  An enemy also needs line of sight. If you take the Hide action, which is allowed
+  while exploring as long as nobody has noticed you, you roll Stealth against
+  DC 15. After that an enemy only notices you if its passive Perception (−5 in dim
+  light without darkvision) is at least your Stealth roll. Attacking from hiding
+  gives advantage, and enemies that hadn't noticed you are surprised.
 - **Spell areas.** `grid.area_cells()` handles sphere, cylinder, cube, cone, line
   and emanation shapes, and walls block them. Areas in `map.areas` with
   `effect: "difficult_terrain"` slow movement, and their `rounds_left` ticks down
@@ -145,7 +193,7 @@ Enemy tactics:
 
 | Tactic | Behaviour |
 | --- | --- |
-| melee_rush | Goes for its target (or the nearest PC). Dashes if it can't reach this turn, otherwise attacks. |
+| melee_rush | Goes for its target (or the nearest PC). Dashes if it can't reach this turn, otherwise attacks. If the only way is through a closed door, it walks up and opens it; locked doors stop it. |
 | swarm | melee_rush, but everyone goes for the PC with the lowest HP. |
 | flee_at_half | At half HP or below, it Disengages if it's adjacent to someone (Dashes otherwise) and runs. It leaves the fight once it's 60 ft away or out of sight. |
 | hit_and_run | Attacks, then backs off with the movement it has left. |
@@ -161,20 +209,40 @@ Allies:
 
 ## Known limitations (prototype)
 
-- **Grid.** Every creature takes up one square, so there are no Large 2x2 tokens,
-  and reach is 5 ft unless a weapon lists more. Line of sight is one
-  center-to-center line, so there's no half or three-quarters cover bonus to AC.
-  Light level is stored but doesn't change what anyone can see.
-- **Reactions.** Opportunity attacks are the only reaction, and they're taken
-  automatically, including the player's. Ready isn't supported.
-- **AI.** It doesn't open doors, use cover, flank, or spread out against area
+- **Grid.** Light only affects spotting; it doesn't give disadvantage on attacks
+  in darkness. Areas of effect don't check cover per target.
+- **Reactions.** Opportunity attacks and readied attacks are the only reactions.
+  The player can turn automatic opportunity attacks on or off, but isn't asked
+  each time. Ready supports attacks only, with the fixed triggers above.
+- **AI.** It opens doors but doesn't seek cover, flank, or spread out against area
   spells. In exploration, allies move straight to the player rather than taking
-  turns.
-- **Data and rules.** Grapple riders in the enemy notes aren't applied (that's in
-  EJ's scope). Spells that create areas don't exist in `spells.py` yet, but the
-  area tools are ready.
-- **Server.** One process with games held in memory and saved to JSON files. There
-  are no logins and no multiplayer, and the GUI asks for state after each action
-  instead of the server pushing updates.
-- **Spotting distance.** It's a fixed 30 ft (`AGGRO_FT`), not Perception against
-  Stealth.
+  turns. Enemies never search for a hidden player once combat has started.
+- **Data and rules (other owners).** Grapple riders in the enemy notes aren't
+  applied (EJ's scope). The giant octopus's tentacles list no reach in
+  `enemies.json`, so they use 5 ft. Adding `"reach_ft": 15` there would give the
+  SRD's 15 ft. Spells that create areas don't exist in `spells.py` yet; the area
+  tools are ready for them. The GUI draws every token as one square.
+- **Server.** One process, with games held in memory and saved to JSON files.
+  There are no logins and no multiplayer, and the GUI asks for state after each
+  action instead of the server pushing updates.
+
+## Changes since checkpoint 2
+
+Each of these was a CP2 limitation. Each item names the test file that covers it
+(`tests/test_combat_cp3.py`, 27 tests):
+
+- **Cover** (half, three-quarters, total): a new corner-based visibility test in
+  `grid.py`, plus a 6-line hook in EJ's `rules.py` so AC and Dex saves include it.
+- **Large creatures:** a 2x2 footprint for occupancy, distance, reach, line of
+  sight, pathfinding (they need wide gaps), opportunity attacks and AI movement.
+- **Ready action:** a readied melee or ranged attack with automatic triggers.
+- **Opportunity-attack setting:** a new `PUT /games/{id}/settings` endpoint.
+- **AI opens doors:** enemies route through closed doors and open them;
+  locked doors still stop them.
+- **Spotting:** the fixed 30 ft range is replaced by light level, darkvision,
+  blindsight and passive Perception against Stealth. Hide now works while
+  exploring, and a hidden player who starts a fight gets surprise.
+- **Integration hook:** `server.py` mounts Josh's `/say` and `/act` routes on the
+  same game when his `llm` package is at the repo root.
+- **Repo cleanup:** `.gitignore`, `api/__init__.py`, and removed the committed
+  `__pycache__` and `saves/` files.

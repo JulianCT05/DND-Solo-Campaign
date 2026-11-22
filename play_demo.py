@@ -97,12 +97,17 @@ for _ in range(25):
     shooter = me["ref"] in ("ranger_wood_elf_hunter", "cleric_dwarf_life")
     if me["ref"] == "ranger_wood_elf_hunter":
         weapon = "Longbow"
-    if (not shooter or not can_see) and not G.adjacent(me["position"], target["position"]):
+    end = G.pos(me)
+    if (not shooter or not can_see) and not G.adjacent(me, target):
         goals = [(target["position"]["x"] + dx, target["position"]["y"] + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)]
         path, _, _ = G.best_step_toward(svc.sessions[sid].flow.grid(), me, goals, me["turn"]["movement_left_ft"])
         if path:
             acts.append({"type": "move", "to": G.as_dict(path[-1])})
-    if me["ref"] == "cleric_dwarf_life":
+            end = path[-1]
+    in_reach = G.adjacent(G.at(me, end), target)
+    if (not shooter and not in_reach) or (shooter and not g.line_of_sight(G.at(me, end), target)):
+        pass  # can't reach or see it this turn: just move
+    elif me["ref"] == "cleric_dwarf_life":
         acts.append({"type": "cast", "spell_id": "sacred_flame", "target_ids": [target["id"]]})
     else:
         acts.append({"type": "attack", "target_id": target["id"], **({"weapon": weapon} if weapon else {})})
