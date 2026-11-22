@@ -108,7 +108,13 @@ class Rules:
         ac = self.data.ac(self.stats(c))
         if self.effect(c, "Shield of Faith"):
             ac += 2
-        return ac
+        return ac + self.cover_bonus(c)
+
+    def cover_bonus(self, c):
+        """+2 half / +5 three-quarters cover. The combat-flow module puts a
+        temporary "Cover" effect on the target while one attack or save is rolled."""
+        e = self.effect(c, "Cover")
+        return int(e.get("data", {}).get("bonus", 0)) if e else 0
 
     def _feature_dc(self, feature_id):
         for f in self.state.get("map", {}).get("features", []):
@@ -131,7 +137,8 @@ class Rules:
         if ability == "dex" and self.has_condition(target, "restrained"):
             dis.append("restrained")
         extra = "1d4" if self.effect(target, "Bless") else None
-        roll, _ = self.dice.d20(self.data.save_bonus(st, ability), combine_mode(adv, dis), extra)
+        bonus = self.data.save_bonus(st, ability) + (self.cover_bonus(target) if ability == "dex" else 0)
+        roll, _ = self.dice.d20(bonus, combine_mode(adv, dis), extra)
         success = roll["total"] >= dc
         log.emit("saving_throw", actor_id=actor_id, target_id=target_id, ability=ability,
                  dc=dc, roll=roll, success=success, source=source)
