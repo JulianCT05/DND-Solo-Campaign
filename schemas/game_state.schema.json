@@ -1,0 +1,302 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pinkteam.example/dnd-solo/game_state.schema.json",
+  "title": "DND Solo Play - Game State",
+  "description": "The single source of truth for one session. Only the engine writes it. Static stats (AC, attacks, spell text) live in characters.json / enemies.json / spells.json and are looked up through `ref`. State holds only what changes.",
+  "type": "object",
+  "required": ["schema_version", "session_id", "rules_edition", "mode", "turn_counter", "party", "enemies", "map", "flags", "summary"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "session_id": { "type": "string" },
+    "rules_edition": { "enum": ["srd_5.2.1"], "description": "Single rules source of truth." },
+    "rng_seed": { "type": "integer", "description": "Optional. Lets a session be replayed exactly." },
+    "mode": { "enum": ["exploration", "combat", "rest", "game_over", "victory"] },
+    "turn_counter": { "type": "integer", "minimum": 0, "description": "Increments on every accepted action. Used to order events." },
+    "location": {
+      "type": "object",
+      "required": ["room_id"],
+      "additionalProperties": false,
+      "properties": {
+        "room_id": { "type": "string" },
+        "light": { "enum": ["bright", "dim", "dark"], "default": "bright" }
+      }
+    },
+    "party": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/combatant_pc" },
+      "description": "One player-controlled character plus engine-controlled ally pregens."
+    },
+    "enemies": { "type": "array", "items": { "$ref": "#/$defs/combatant_enemy" } },
+    "map": { "$ref": "#/$defs/map" },
+    "combat": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/combat" }],
+      "description": "null unless mode is combat."
+    },
+    "inventory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["item", "qty", "owner_id"],
+        "additionalProperties": false,
+        "properties": {
+          "item": { "type": "string" },
+          "qty": { "type": "integer", "minimum": 0 },
+          "owner_id": { "type": "string" }
+        }
+      }
+    },
+    "flags": {
+      "type": "object",
+      "description": "Story and encounter booleans, for example door_unlocked, croaker_dead. Free keys, boolean values.",
+      "additionalProperties": { "type": "boolean" }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["text", "updated_at_turn"],
+      "additionalProperties": false,
+      "properties": {
+        "text": { "type": "string", "description": "Rolling LLM-written story summary, kept short." },
+        "updated_at_turn": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "recent_events": {
+      "type": "array",
+      "maxItems": 30,
+      "items": { "$ref": "action_event.schema.json#/$defs/event" },
+      "description": "Last N engine events, so the narrator has context. Full log is stored separately."
+    }
+  },
+  "$defs": {
+    "ability": { "enum": ["str", "dex", "con", "int", "wis", "cha"] },
+    "condition_name": {
+      "enum": ["blinded", "charmed", "deafened", "frightened", "grappled", "incapacitated", "invisible", "paralyzed", "petrified", "poisoned", "prone", "restrained", "stunned", "unconscious", "exhaustion"]
+    },
+    "position": {
+      "type": "object",
+      "required": ["x", "y"],
+      "additionalProperties": false,
+      "properties": { "x": { "type": "integer", "minimum": 0 }, "y": { "type": "integer", "minimum": 0 } }
+    },
+    "active_condition": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/condition_name" },
+        "source_id": { "type": "string", "description": "Who or what caused it." },
+        "rounds_left": { "type": ["integer", "null"], "minimum": 0, "description": "null = until removed." },
+        "save_ends": {
+          "type": "object",
+          "required": ["ability", "dc"],
+          "additionalProperties": false,
+          "properties": { "ability": { "$ref": "#/$defs/ability" }, "dc": { "type": "integer" }, "timing": { "enum": ["end_of_turn", "start_of_turn"] } }
+        },
+        "level": { "type": "integer", "minimum": 1, "maximum": 6, "description": "Exhaustion level only." }
+      }
+    },
+    "turn_economy": {
+      "type": "object",
+      "required": ["action", "bonus_action", "reaction", "movement_left_ft"],
+      "additionalProperties": false,
+      "properties": {
+        "action": { "type": "boolean", "description": "true = still available" },
+        "bonus_action": { "type": "boolean" },
+        "reaction": { "type": "boolean" },
+        "movement_left_ft": { "type": "integer", "minimum": 0 },
+        "free_interaction": { "type": "boolean", "default": true },
+        "once_per_turn_used": { "type": "array", "items": { "type": "string" }, "description": "For Cleave, Frenzy, Sneak style limits." }
+      }
+    },
+    "combatant_common": {
+      "type": "object",
+      "required": ["id", "ref", "name", "hp", "max_hp", "temp_hp", "position", "conditions", "alive"],
+      "properties": {
+        "id": { "type": "string", "description": "Unique instance id, for example giant_frog_2." },
+        "ref": { "type": "string", "description": "Key into the static dataset." },
+        "name": { "type": "string" },
+        "hp": { "type": "integer", "minimum": 0 },
+        "max_hp": { "type": "integer", "minimum": 1 },
+        "temp_hp": { "type": "integer", "minimum": 0 },
+        "alive": { "type": "boolean", "description": "House rule: 0 HP = dead, no death saves." },
+        "position": { "$ref": "#/$defs/position" },
+        "conditions": { "type": "array", "items": { "$ref": "#/$defs/active_condition" } },
+        "concentrating_on": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["spell_id"],
+              "additionalProperties": false,
+              "properties": { "spell_id": { "type": "string" }, "target_ids": { "type": "array", "items": { "type": "string" } }, "rounds_left": { "type": ["integer", "null"] } }
+            }
+          ]
+        },
+        "turn": { "$ref": "#/$defs/turn_economy" },
+        "effects": {
+          "type": "array",
+          "description": "Temporary buffs or states that are not conditions: Rage, Hunter's Mark, Bless, Longstrider.",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "source_id": { "type": "string" },
+              "target_id": { "type": "string", "description": "For marks, e.g. Hunter's Mark target." },
+              "rounds_left": { "type": ["integer", "null"] },
+              "data": { "type": "object" }
+            }
+          }
+        }
+      }
+    },
+    "combatant_pc": {
+      "allOf": [
+        { "$ref": "#/$defs/combatant_common" },
+        {
+          "type": "object",
+          "required": ["controller", "resources"],
+          "properties": {
+            "controller": { "enum": ["player", "engine_ally"] },
+            "resources": {
+              "type": "object",
+              "required": ["hit_dice_left", "spell_slots", "uses"],
+              "additionalProperties": false,
+              "properties": {
+                "hit_dice_left": { "type": "integer", "minimum": 0 },
+                "spell_slots": {
+                  "type": "object",
+                  "description": "Keyed by spell level as a string, '1' to '9'.",
+                  "patternProperties": {
+                    "^[1-9]$": {
+                      "type": "object",
+                      "required": ["max", "used"],
+                      "additionalProperties": false,
+                      "properties": { "max": { "type": "integer", "minimum": 0 }, "used": { "type": "integer", "minimum": 0 } }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "prepared_spells": { "type": "array", "items": { "type": "string" }, "description": "Spell ids from spells.json." },
+                "uses": {
+                  "type": "object",
+                  "description": "Limited class and species features, e.g. rage, channel_divinity, adrenaline_rush.",
+                  "additionalProperties": {
+                    "type": "object",
+                    "required": ["max", "used", "recharge"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "max": { "type": "integer", "minimum": 0 },
+                      "used": { "type": "integer", "minimum": 0 },
+                      "recharge": { "enum": ["short_rest", "long_rest", "dawn", "never"] }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": true
+    },
+    "combatant_enemy": {
+      "allOf": [
+        { "$ref": "#/$defs/combatant_common" },
+        {
+          "type": "object",
+          "required": ["ai"],
+          "properties": {
+            "ai": {
+              "type": "object",
+              "required": ["tactic", "awake"],
+              "additionalProperties": false,
+              "properties": {
+                "tactic": { "enum": ["melee_rush", "ranged_kite", "hit_and_run", "support", "guard", "flee_at_half", "swarm"] },
+                "awake": { "type": "boolean" },
+                "target_id": { "type": ["string", "null"] },
+                "recharge_ready": { "type": "object", "additionalProperties": { "type": "boolean" }, "description": "For recharge or 1/day monster abilities." }
+              }
+            },
+            "legendary_uses_left": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ],
+      "unevaluatedProperties": true
+    },
+    "map": {
+      "type": "object",
+      "required": ["width", "height", "cell_ft", "terrain"],
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "integer", "minimum": 1, "maximum": 60 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 60 },
+        "cell_ft": { "const": 5 },
+        "terrain": {
+          "type": "array",
+          "description": "Row-major list of strings, one per row, one character per cell. Legend below.",
+          "items": { "type": "string" }
+        },
+        "legend": {
+          "type": "object",
+          "description": "Character to terrain id. Default: '.' floor, '#' wall, '~' difficult terrain, 'D' door, 'W' water.",
+          "additionalProperties": { "type": "string" }
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "position"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "kind": { "enum": ["door", "chest", "trap", "lever", "light_source", "cover", "hazard", "exit", "npc", "object"] },
+              "position": { "$ref": "#/$defs/position" },
+              "state": { "enum": ["closed", "open", "locked", "hidden", "triggered", "used"] },
+              "dc": { "type": "integer" },
+              "notes": { "type": "string" }
+            }
+          }
+        },
+        "areas": {
+          "type": "array",
+          "description": "Active spell or hazard areas, e.g. Entangle, Fog Cloud, Spike Growth.",
+          "items": {
+            "type": "object",
+            "required": ["id", "source", "shape", "origin"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "source": { "type": "string" },
+              "shape": { "enum": ["sphere", "cube", "cone", "line", "cylinder", "emanation"] },
+              "size_ft": { "type": "integer" },
+              "origin": { "$ref": "#/$defs/position" },
+              "effect": { "type": "string" },
+              "rounds_left": { "type": ["integer", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "combat": {
+      "type": "object",
+      "required": ["round", "initiative_order", "active_index"],
+      "additionalProperties": false,
+      "properties": {
+        "round": { "type": "integer", "minimum": 1 },
+        "initiative_order": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "initiative"],
+            "additionalProperties": false,
+            "properties": { "id": { "type": "string" }, "initiative": { "type": "integer" } }
+          }
+        },
+        "active_index": { "type": "integer", "minimum": 0 },
+        "surprised_ids": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

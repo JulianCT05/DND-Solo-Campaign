@@ -1,0 +1,423 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pinkteam.example/dnd-solo/action_event.schema.json",
+  "title": "DND Solo Play - Actions and Events",
+  "description": "Two directions. `action` = what the LLM parser produces from player text (engine validates it). `event` = what the engine emits after resolving it (the narrator only reads events). `turn_result` wraps one action and its events.",
+  "oneOf": [
+    { "$ref": "#/$defs/action_request" },
+    { "$ref": "#/$defs/turn_result" }
+  ],
+  "$defs": {
+    "id": { "type": "string", "description": "Instance id from game state, e.g. cleric_1, giant_frog_2." },
+    "position": {
+      "type": "object", "required": ["x", "y"], "additionalProperties": false,
+      "properties": { "x": { "type": "integer", "minimum": 0 }, "y": { "type": "integer", "minimum": 0 } }
+    },
+    "ability": { "enum": ["str", "dex", "con", "int", "wis", "cha"] },
+    "skill": {
+      "enum": ["acrobatics", "animal_handling", "arcana", "athletics", "deception", "history", "insight", "intimidation", "investigation", "medicine", "nature", "perception", "performance", "persuasion", "religion", "sleight_of_hand", "stealth", "survival"]
+    },
+    "damage_type": {
+      "enum": ["acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic", "piercing", "poison", "psychic", "radiant", "slashing", "thunder"]
+    },
+    "roll_mode": { "enum": ["normal", "advantage", "disadvantage"] },
+
+    "action_request": {
+      "type": "object",
+      "required": ["schema_version", "actor_id", "raw_text", "confidence", "actions"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": "1.0.0" },
+        "actor_id": { "$ref": "#/$defs/id" },
+        "raw_text": { "type": "string", "description": "Exactly what the player typed. Kept for logs and disputes." },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "clarification_needed": {
+          "type": ["string", "null"],
+          "description": "If the text is ambiguous the parser sets this question and leaves `actions` empty. The engine shows it to the player instead of guessing."
+        },
+        "actions": {
+          "type": "array",
+          "description": "Ordered. A turn may hold move + attack + bonus action, so this is a list.",
+          "items": { "$ref": "#/$defs/action" }
+        }
+      }
+    },
+
+    "action": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        { "$ref": "#/$defs/a_move" },
+        { "$ref": "#/$defs/a_attack" },
+        { "$ref": "#/$defs/a_cast" },
+        { "$ref": "#/$defs/a_use_feature" },
+        { "$ref": "#/$defs/a_use_item" },
+        { "$ref": "#/$defs/a_simple" },
+        { "$ref": "#/$defs/a_interact" },
+        { "$ref": "#/$defs/a_check" },
+        { "$ref": "#/$defs/a_talk" },
+        { "$ref": "#/$defs/a_rest" },
+        { "$ref": "#/$defs/a_end_turn" },
+        { "$ref": "#/$defs/a_rules_question" }
+      ]
+    },
+    "a_move": {
+      "type": "object", "required": ["type", "to"], "additionalProperties": false,
+      "properties": {
+        "type": { "const": "move" },
+        "to": { "$ref": "#/$defs/position" },
+        "stay_adjacent_to": { "$ref": "#/$defs/id" }
+      }
+    },
+    "a_attack": {
+      "type": "object", "required": ["type", "target_id"], "additionalProperties": false,
+      "properties": {
+        "type": { "const": "attack" },
+        "target_id": { "$ref": "#/$defs/id" },
+        "weapon": { "type": "string", "description": "Name from the actor's weapons list. Engine picks default if omitted." },
+        "modifiers": {
+          "type": "array",
+          "items": { "enum": ["reckless", "thrown", "offhand", "unarmed"] },
+          "description": "Player-chosen options. The engine decides advantage itself; the parser never sets it."
+        }
+      }
+    },
+    "a_cast": {
+      "type": "object", "required": ["type", "spell_id"], "additionalProperties": false,
+      "properties": {
+        "type": { "const": "cast" },
+        "spell_id": { "type": "string" },
+        "slot_level": { "type": "integer", "minimum": 1, "maximum": 9, "description": "Omit for cantrips." },
+        "target_ids": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "target_point": { "$ref": "#/$defs/position" },
+        "choice": { "type": "string", "description": "Spell option, e.g. Guidance skill or Guiding Bolt n/a." }
+      }
+    },
+    "a_use_feature": {
+      "type": "object", "required": ["type", "feature"], "additionalProperties": false,
+      "properties": {
+        "type": { "const": "use_feature" },
+        "feature": { "type": "string", "description": "e.g. rage, channel_divinity, adrenaline_rush, second_wind." },
+        "target_ids": { "type": "array", "items": { "$ref": "#/$defs/id" } }
+      }
+    },
+    "a_use_item": {
+      "type": "object", "required": ["type", "item"], "additionalProperties": false,
+      "properties": {
+        "type": { "const": "use_item" },
+        "item": { "type": "string" },
+        "target_id": { "$ref": "#/$defs/id" }
+      }
+    },
+    "a_simple": {
+      "type": "object", "required": ["type"], "additionalProperties": false,
+      "properties": { "type": { "enum": ["dash", "dodge", "disengage", "help", "hide", "ready", "search", "stand_up"] }, "target_id": { "$ref": "#/$defs/id" } }
+    },
+    "a_interact": {
+      "type": "object", "required": ["type", "object_id", "verb"], "additionalProperties": false,
+      "properties": {
+        "type": { "const": "interact" },
+        "object_id": { "type": "string", "description": "Map feature id." },
+        "verb": { "enum": ["open", "close", "unlock", "force", "disarm", "pull", "take", "examine"] }
+      }
+    },
+    "a_check": {
+      "type": "object", "required": ["type", "ability"], "additionalProperties": false,
+      "properties": {
+        "type": { "const": "check" },
+        "ability": { "$ref": "#/$defs/ability" },
+        "skill": { "$ref": "#/$defs/skill" },
+        "target_id": { "type": "string" },
+        "intent": { "type": "string", "description": "Short phrase of what the player is trying to do." }
+      }
+    },
+    "a_talk": {
+      "type": "object", "required": ["type", "text"], "additionalProperties": false,
+      "properties": {
+        "type": { "const": "talk" },
+        "target_id": { "$ref": "#/$defs/id" },
+        "text": { "type": "string" },
+        "tone": { "enum": ["neutral", "friendly", "threatening", "deceptive", "persuasive"] }
+      }
+    },
+    "a_rest": {
+      "type": "object", "required": ["type", "kind"], "additionalProperties": false,
+      "properties": { "type": { "const": "rest" }, "kind": { "enum": ["short", "long"] } }
+    },
+    "a_end_turn": {
+      "type": "object", "required": ["type"], "additionalProperties": false,
+      "properties": { "type": { "const": "end_turn" } }
+    },
+    "a_rules_question": {
+      "type": "object", "required": ["type", "question"], "additionalProperties": false,
+      "properties": { "type": { "const": "rules_question" }, "question": { "type": "string" } },
+      "description": "No state change. Answered from the rules JSON."
+    },
+
+    "turn_result": {
+      "type": "object",
+      "required": ["schema_version", "turn", "actor_id", "status", "events"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": "1.0.0" },
+        "turn": { "type": "integer", "minimum": 0 },
+        "actor_id": { "$ref": "#/$defs/id" },
+        "status": { "enum": ["accepted", "rejected", "needs_clarification"] },
+        "events": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+        "narration_hint": { "type": "string", "description": "Optional engine note for the narrator, e.g. 'keep it short'." }
+      }
+    },
+
+    "event_base": {
+      "type": "object",
+      "required": ["type", "seq"],
+      "properties": {
+        "seq": { "type": "integer", "minimum": 0, "description": "Order inside the turn." },
+        "actor_id": { "$ref": "#/$defs/id" }
+      }
+    },
+
+    "roll": {
+      "type": "object",
+      "required": ["expr", "dice", "modifier", "total"],
+      "additionalProperties": false,
+      "properties": {
+        "expr": { "type": "string", "description": "e.g. 1d20+5" },
+        "dice": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "description": "Raw die results. For advantage, both d20s are listed." },
+        "kept": { "type": "array", "items": { "type": "integer" } },
+        "mode": { "$ref": "#/$defs/roll_mode" },
+        "modifier": { "type": "integer" },
+        "total": { "type": "integer" }
+      }
+    },
+
+    "event": {
+      "oneOf": [
+        { "$ref": "#/$defs/e_rejected" },
+        { "$ref": "#/$defs/e_combat_start" },
+        { "$ref": "#/$defs/e_initiative" },
+        { "$ref": "#/$defs/e_turn_start" },
+        { "$ref": "#/$defs/e_move" },
+        { "$ref": "#/$defs/e_attack" },
+        { "$ref": "#/$defs/e_save" },
+        { "$ref": "#/$defs/e_check" },
+        { "$ref": "#/$defs/e_damage" },
+        { "$ref": "#/$defs/e_heal" },
+        { "$ref": "#/$defs/e_condition" },
+        { "$ref": "#/$defs/e_spell_cast" },
+        { "$ref": "#/$defs/e_concentration" },
+        { "$ref": "#/$defs/e_resource" },
+        { "$ref": "#/$defs/e_death" },
+        { "$ref": "#/$defs/e_interact" },
+        { "$ref": "#/$defs/e_dialogue" },
+        { "$ref": "#/$defs/e_rest" },
+        { "$ref": "#/$defs/e_combat_end" },
+        { "$ref": "#/$defs/e_state_change" }
+      ]
+    },
+    "e_rejected": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "reason_code", "message"],
+      "properties": {
+        "type": { "const": "rejected" },
+        "reason_code": { "enum": ["not_your_turn", "no_action_left", "out_of_range", "no_line_of_sight", "invalid_target", "no_resource", "not_prepared", "unknown_spell", "blocked_path", "not_enough_movement", "condition_prevents", "ambiguous", "unknown_command"] },
+        "message": { "type": "string", "description": "Plain text the GUI can show directly." }
+      }
+    },
+    "e_combat_start": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "participants"],
+      "properties": {
+        "type": { "const": "combat_start" },
+        "participants": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "surprised": { "type": "array", "items": { "$ref": "#/$defs/id" } }
+      }
+    },
+    "e_initiative": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "roll"],
+      "properties": { "type": { "const": "initiative" }, "roll": { "$ref": "#/$defs/roll" } }
+    },
+    "e_turn_start": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "round"],
+      "properties": { "type": { "const": "turn_start" }, "round": { "type": "integer", "minimum": 1 } }
+    },
+    "e_move": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "path", "feet_used"],
+      "properties": {
+        "type": { "const": "move" },
+        "path": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/position" } },
+        "feet_used": { "type": "integer", "minimum": 0 },
+        "provoked_opportunity_attack_from": { "type": "array", "items": { "$ref": "#/$defs/id" } }
+      }
+    },
+    "e_attack": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "target_id", "weapon", "roll", "target_ac", "outcome"],
+      "properties": {
+        "type": { "const": "attack" },
+        "target_id": { "$ref": "#/$defs/id" },
+        "weapon": { "type": "string" },
+        "roll": { "$ref": "#/$defs/roll" },
+        "target_ac": { "type": "integer" },
+        "outcome": { "enum": ["miss", "hit", "critical_hit", "critical_miss"] },
+        "mastery_applied": { "type": "string", "description": "e.g. Cleave, Vex, Graze." }
+      }
+    },
+    "e_save": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "target_id", "ability", "dc", "roll", "success"],
+      "properties": {
+        "type": { "const": "saving_throw" },
+        "target_id": { "$ref": "#/$defs/id" },
+        "ability": { "$ref": "#/$defs/ability" },
+        "dc": { "type": "integer" },
+        "roll": { "$ref": "#/$defs/roll" },
+        "success": { "type": "boolean" },
+        "source": { "type": "string" }
+      }
+    },
+    "e_check": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "ability", "dc", "roll", "success"],
+      "properties": {
+        "type": { "const": "ability_check" },
+        "ability": { "$ref": "#/$defs/ability" },
+        "skill": { "$ref": "#/$defs/skill" },
+        "dc": { "type": "integer" },
+        "roll": { "$ref": "#/$defs/roll" },
+        "success": { "type": "boolean" },
+        "intent": { "type": "string" }
+      }
+    },
+    "e_damage": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "target_id", "amount", "damage_type", "hp_after"],
+      "properties": {
+        "type": { "const": "damage" },
+        "target_id": { "$ref": "#/$defs/id" },
+        "roll": { "$ref": "#/$defs/roll" },
+        "amount": { "type": "integer", "minimum": 0, "description": "Final damage after resistance, vulnerability and critical doubling." },
+        "damage_type": { "$ref": "#/$defs/damage_type" },
+        "critical": { "type": "boolean", "description": "House rule: total damage roll doubled." },
+        "modifier_applied": { "enum": ["none", "resistance", "vulnerability", "immunity", "half_on_save"] },
+        "source": { "type": "string" },
+        "hp_after": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "e_heal": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "target_id", "amount", "hp_after"],
+      "properties": {
+        "type": { "const": "heal" },
+        "target_id": { "$ref": "#/$defs/id" },
+        "roll": { "$ref": "#/$defs/roll" },
+        "amount": { "type": "integer", "minimum": 0 },
+        "temp_hp": { "type": "boolean", "default": false },
+        "source": { "type": "string" },
+        "hp_after": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "e_condition": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "target_id", "condition", "change"],
+      "properties": {
+        "type": { "const": "condition" },
+        "target_id": { "$ref": "#/$defs/id" },
+        "condition": { "type": "string" },
+        "change": { "enum": ["applied", "removed", "expired"] },
+        "source": { "type": "string" },
+        "rounds": { "type": ["integer", "null"] }
+      }
+    },
+    "e_spell_cast": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "spell_id"],
+      "properties": {
+        "type": { "const": "spell_cast" },
+        "spell_id": { "type": "string" },
+        "slot_level": { "type": "integer", "minimum": 0 },
+        "target_ids": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "attack_roll": { "$ref": "#/$defs/roll" },
+        "area_created": { "type": "string", "description": "Map area id if the spell made one." }
+      }
+    },
+    "e_concentration": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "change", "spell_id"],
+      "properties": {
+        "type": { "const": "concentration" },
+        "change": { "enum": ["started", "maintained", "broken", "ended"] },
+        "spell_id": { "type": "string" },
+        "save": { "$ref": "#/$defs/e_save" }
+      }
+    },
+    "e_resource": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "resource", "delta", "remaining"],
+      "properties": {
+        "type": { "const": "resource" },
+        "resource": { "type": "string", "description": "e.g. spell_slot_1, rage, arrows, hit_dice." },
+        "delta": { "type": "integer" },
+        "remaining": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "e_death": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "target_id"],
+      "properties": {
+        "type": { "const": "death" },
+        "target_id": { "$ref": "#/$defs/id" },
+        "killed_by": { "$ref": "#/$defs/id" }
+      }
+    },
+    "e_interact": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "object_id", "verb", "result"],
+      "properties": {
+        "type": { "const": "interact" },
+        "object_id": { "type": "string" },
+        "verb": { "type": "string" },
+        "result": { "enum": ["success", "failure", "triggered_trap", "nothing_found"] },
+        "reveals": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "e_dialogue": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "speaker_id"],
+      "properties": {
+        "type": { "const": "dialogue" },
+        "speaker_id": { "$ref": "#/$defs/id" },
+        "needs_llm": { "type": "boolean", "description": "true = narrator should write the line." },
+        "topic": { "type": "string" },
+        "attitude": { "enum": ["hostile", "unfriendly", "neutral", "friendly", "helpful"] }
+      }
+    },
+    "e_rest": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "kind"],
+      "properties": {
+        "type": { "const": "rest" },
+        "kind": { "enum": ["short", "long"] },
+        "hp_restored": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "resources_restored": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "e_combat_end": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "result"],
+      "properties": { "type": { "const": "combat_end" }, "result": { "enum": ["victory", "defeat", "fled"] } }
+    },
+    "e_state_change": {
+      "allOf": [{ "$ref": "#/$defs/event_base" }],
+      "type": "object", "required": ["type", "field", "value"],
+      "properties": {
+        "type": { "const": "state_change" },
+        "field": { "type": "string", "description": "e.g. mode, flags.door_unlocked, location.room_id" },
+        "value": {}
+      }
+    }
+  }
+}
