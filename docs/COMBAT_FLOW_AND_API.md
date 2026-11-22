@@ -1,4 +1,4 @@
-# Combat flow, map and API (Leena's part)
+# Combat flow, map and API
 
 This half of the engine decides **whether** an action is allowed right now, and
 handles time and space. EJ's `Rules` decides **what happens** when it resolves.
@@ -17,7 +17,7 @@ play_demo.py        seeded game printed as a dice log (no server needed)
 
 ```
 pip install -r requirements.txt
-python -m pytest                    # 124 tests + 1 that needs FastAPI (EJ's 27, the rest for this part)
+python -m pytest                    # 124 tests + 1 that needs FastAPI 
 python play_demo.py 11              # same seed = same fight
 uvicorn api.server:app --reload     # http://127.0.0.1:8000/docs
 ```
