@@ -106,6 +106,21 @@ class GameService:
         cells = s.flow.reachable(actor_id)
         return [{"x": x, "y": y, "feet": f} for (x, y), f in sorted(cells.items())]
 
+    SETTINGS = {"auto_opportunity_attacks": bool}
+
+    def settings(self, session_id, changes):
+        """Player options stored in state flags. Only known keys with the right type."""
+        bad = [k for k, v in changes.items()
+               if k not in self.SETTINGS or not isinstance(v, self.SETTINGS[k])]
+        if bad:
+            raise BadRequest(f"Unknown or invalid settings: {', '.join(bad)}. "
+                             f"Allowed: {', '.join(self.SETTINGS)} (true/false).")
+        with self.lock:
+            s = self._session(session_id)
+            s.state["flags"].update(changes)
+            self._save(s, [])
+            return {k: s.state["flags"].get(k, True) for k in self.SETTINGS}
+
     # ---------------- save / load
     def save(self, session_id):
         with self.lock:

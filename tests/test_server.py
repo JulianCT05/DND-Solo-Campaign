@@ -49,3 +49,10 @@ def test_http_errors(client):
     sid = client.post("/games", json={"character": "barbarian_orc_berserker"}).json()["session_id"]
     r = client.post(f"/games/{sid}/actions", json={"actor_id": "barbarian_1"})
     assert r.status_code == 422 and r.json()["detail"]["errors"]
+
+
+def test_settings_endpoint(client):
+    sid = client.post("/games", json={"character": "barbarian_orc_berserker"}).json()["session_id"]
+    r = client.put(f"/games/{sid}/settings", json={"auto_opportunity_attacks": False})
+    assert r.status_code == 200 and r.json() == {"auto_opportunity_attacks": False}
+    assert client.put(f"/games/{sid}/settings", json={"auto_opportunity_attacks": "no"}).status_code == 422
