@@ -25,11 +25,11 @@ import re
 from pathlib import Path
 
 from .client import LLMError, extract_json
-from .config import load_prompt
+from .config import find_file, load_prompt
 from .context import (by_id, creatures, distance_ft, fled, load_data, parser_context,
                       player, slug)
 
-SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "action_event.schema.json"
+SCHEMA_PATH = find_file("schemas/action_event.schema.json")
 SCHEMA_VERSION = "1.0.0"
 LOW_CONFIDENCE = 0.35
 

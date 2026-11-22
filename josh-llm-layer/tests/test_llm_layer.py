@@ -8,7 +8,7 @@ import pytest
 
 from llm import FakeClient, KeywordParser, LLMError, Narrator, Parser, schema_errors
 from llm.client import AnthropicClient, extract_json
-from llm.config import LLMConfig
+from llm.config import LLMConfig, find_file
 from llm.context import parser_context
 from llm.dm import DungeonMaster, LocalEngine, build_dm
 from llm.narrator import dice_log, facts_for_turn, guard
@@ -158,8 +158,8 @@ def test_keyword_parser_basics(state):
 
 
 # ---------------------------------------------------------------- narrator
-TURN = json.load(open("data/example_turn_result.json"))
-STATE_EX = json.load(open("data/example_game_state.json"))
+TURN = json.loads(find_file("data/example_turn_result.json").read_text(encoding="utf-8"))
+STATE_EX = json.loads(find_file("data/example_game_state.json").read_text(encoding="utf-8"))
 
 
 def test_facts_and_dice_log_from_example_turn():

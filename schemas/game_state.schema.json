@@ -52,6 +52,34 @@
       "description": "Story and encounter booleans, for example door_unlocked, croaker_dead. Free keys, boolean values.",
       "additionalProperties": { "type": "boolean" }
     },
+    "story": {
+      "type": "object",
+      "description": "Progress through the story file data/stories/<story_id>.json (see story.schema.json). Only the story runner in the engine writes it. Story flags stay in `flags`. Omit when the game runs a bare room with no story.",
+      "required": ["story_id", "beats", "objectives", "clues_found", "npc_attitudes", "fired_triggers"],
+      "additionalProperties": false,
+      "properties": {
+        "story_id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "current_beat": { "type": ["string", "null"], "description": "The beat the narrator is describing now. null before the first beat starts." },
+        "beats": {
+          "type": "object",
+          "description": "Beat id to status. Beats not listed are not_started.",
+          "additionalProperties": { "enum": ["not_started", "active", "complete"] }
+        },
+        "objectives": {
+          "type": "object",
+          "description": "Objective id to status, shown in the quest panel.",
+          "additionalProperties": { "enum": ["hidden", "active", "complete", "failed"] }
+        },
+        "clues_found": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "npc_attitudes": {
+          "type": "object",
+          "description": "NPC instance id to current attitude. NPCs not listed use the story's starting attitude.",
+          "additionalProperties": { "enum": ["hostile", "unfriendly", "neutral", "friendly", "helpful"] }
+        },
+        "fired_triggers": { "type": "array", "items": { "type": "string" }, "uniqueItems": true, "description": "Ids of once-only triggers that already ran." },
+        "ending_id": { "type": ["string", "null"], "description": "Set when an ending is reached." }
+      }
+    },
     "summary": {
       "type": "object",
       "required": ["text", "updated_at_turn"],

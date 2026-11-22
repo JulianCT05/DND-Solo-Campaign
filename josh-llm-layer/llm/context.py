@@ -12,7 +12,12 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+from .config import SEARCH_ROOTS
+
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+# Where else to look when a file isn't in DATA_DIR: characters.json and
+# enemies.json live in the main repo's data/, spells.json in this folder's data/.
+FALLBACK_DATA_DIRS = [b / "data" for b in SEARCH_ROOTS]
 
 
 def slug(name):
@@ -25,8 +30,8 @@ def load_data(data_dir=str(DATA_DIR)):
     d = Path(data_dir)
 
     def read(name, key):
-        p = d / name
-        if not p.exists():
+        p = next((x / name for x in [d] + FALLBACK_DATA_DIRS if (x / name).exists()), None)
+        if p is None:
             return {}
         return {x["id"]: x for x in json.loads(p.read_text(encoding="utf-8")).get(key, [])}
 

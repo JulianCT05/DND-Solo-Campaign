@@ -284,6 +284,7 @@
       "type": "object", "required": ["type", "ability", "dc", "roll", "success"],
       "properties": {
         "type": { "const": "ability_check" },
+        "target_id": { "type": "string", "description": "What the check was aimed at: a map feature id or creature id, copied from the check action. Lets story clues and triggers know which object was searched." },
         "ability": { "$ref": "#/$defs/ability" },
         "skill": { "$ref": "#/$defs/skill" },
         "dc": { "type": "integer" },
