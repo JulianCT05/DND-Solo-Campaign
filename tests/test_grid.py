@@ -87,7 +87,11 @@ def test_water_is_difficult_unless_you_can_swim():
 
 def test_line_of_sight():
     g = G.Grid(ROOM)
-    assert g.line_of_sight((1, 3), (6, 3)) is False   # wall at (3,3)
+    # the wall stub at (3,3)-(3,4) hides (6,3) only partly: visible over its top edge
+    assert g.line_of_sight((1, 3), (6, 3)) is True
+    assert g.cover((1, 3), (6, 3)) == 2
+    # walls above and below the stub's row leave no line at all: total cover
+    assert g.line_of_sight((1, 4), (5, 4)) is False and g.cover((1, 4), (5, 4)) is None
     assert g.line_of_sight((1, 1), (6, 1)) is True
     assert g.line_of_sight((5, 4), (6, 4)) is True    # adjacent, door is the end cell
     assert g.line_of_sight((1, 4), (2, 1)) is True
