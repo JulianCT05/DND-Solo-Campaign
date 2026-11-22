@@ -1,0 +1,370 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pinkteam.example/dnd-solo/story.schema.json",
+  "title": "DND Solo Play - Story",
+  "description": "Static story script for one adventure, written against the room files in data/rooms/. It says what can happen and what the narrator may say; it holds no live state. Flags live in game_state.flags. Beat, objective, clue, NPC attitude and fired-trigger progress live in game_state.story. The engine checks `triggers` after every event, and the narrator only sees the beat text and facts the story marks as allowed. Ids here must match the game: room_id = room file name, feature ids = map.features[].id, enemy ids = the room file's enemies[].id.",
+  "type": "object",
+  "required": ["schema_version", "story_id", "title", "rules_edition", "premise", "start", "flags", "beats", "endings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "story_id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+    "title": { "type": "string" },
+    "rules_edition": { "const": "srd_5.2.1" },
+    "premise": {
+      "type": "object",
+      "required": ["hook", "setting", "tone"],
+      "additionalProperties": false,
+      "properties": {
+        "hook": { "type": "string", "description": "Why the party is here. Written in the team's own words." },
+        "setting": { "type": "string", "description": "Should fit the campaign setting in llm/prompts/narrator_system.md (a frozen, eerie wilderness)." },
+        "tone": { "type": "string", "description": "e.g. cold, tense, a little dark humor." },
+        "content_notes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "narrator_rules": {
+      "type": "object",
+      "description": "Extra rules on top of narrator_system.md. They can tighten its rules but not loosen them (it already caps turns at 2 to 4 sentences, present tense, 'you', no numbers).",
+      "additionalProperties": false,
+      "properties": {
+        "max_sentences": { "type": "integer", "minimum": 1, "maximum": 4, "default": 4 },
+        "voice": { "type": "string" },
+        "never": { "type": "array", "items": { "type": "string" }, "description": "Hard bans, e.g. 'decide the result of a roll'." }
+      }
+    },
+    "start": {
+      "type": "object",
+      "required": ["room_id", "intro_text", "first_beat"],
+      "additionalProperties": false,
+      "properties": {
+        "room_id": { "$ref": "#/$defs/room_id", "description": "Passed as room_id to POST /games." },
+        "intro_text": { "type": "string" },
+        "first_beat": { "$ref": "#/$defs/beat_id" }
+      }
+    },
+    "flags": {
+      "type": "object",
+      "description": "Registry of every story flag. Conditions and effects may only use these keys or keys from the room file's flags. Initial values are merged into game_state.flags at game start, after the room's flags. Note the engine reads two flag names itself: has_key_<feature_id> (or has_key) lets `unlock` work, and it sets <feature_id>_<state> whenever a feature changes state.",
+      "propertyNames": { "$ref": "#/$defs/flag_key" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["initial", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "initial": { "type": "boolean" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "beats": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/beat" } },
+    "npcs": { "type": "array", "items": { "$ref": "#/$defs/npc" } },
+    "clues": { "type": "array", "items": { "$ref": "#/$defs/clue" } },
+    "objectives": { "type": "array", "items": { "$ref": "#/$defs/objective" } },
+    "triggers": { "type": "array", "items": { "$ref": "#/$defs/trigger" } },
+    "endings": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ending" } }
+  },
+  "$defs": {
+    "room_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Name of a room file, data/rooms/<room_id>.json, e.g. demo_cellar. Same as game_state.location.room_id."
+    },
+    "beat_id": { "type": "string", "pattern": "^b_[a-z0-9_]+$" },
+    "flag_key": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "instance_id": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Creature instance id from the room file or party, e.g. giant_frog_1, cleric_1." },
+    "feature_id": { "type": "string", "description": "A map.features[].id in the room file, e.g. cellar_door." },
+    "feature_state": { "enum": ["closed", "open", "locked", "hidden", "triggered", "used"], "description": "Same values as game_state map.features[].state." },
+    "interact_verb": { "enum": ["open", "close", "unlock", "force", "disarm", "pull", "take", "examine"], "description": "Same verbs as the interact action." },
+    "game_mode": { "enum": ["exploration", "combat", "rest", "game_over", "victory"] },
+    "item_name": { "type": "string", "description": "Inventory item name as the engine stores it, e.g. 'Potion of Healing', 'Iron Key'." },
+    "ability": { "enum": ["str", "dex", "con", "int", "wis", "cha"] },
+    "skill": {
+      "enum": ["acrobatics", "animal_handling", "arcana", "athletics", "deception", "history", "insight", "intimidation", "investigation", "medicine", "nature", "perception", "performance", "persuasion", "religion", "sleight_of_hand", "stealth", "survival"]
+    },
+    "attitude": { "enum": ["hostile", "unfriendly", "neutral", "friendly", "helpful"] },
+    "condition": {
+      "description": "A yes/no test the engine can evaluate from game state. Combine with all / any / not.",
+      "oneOf": [
+        {
+          "type": "object", "required": ["type", "of"], "additionalProperties": false,
+          "properties": { "type": { "enum": ["all", "any"] }, "of": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/condition" } } }
+        },
+        {
+          "type": "object", "required": ["type", "of"], "additionalProperties": false,
+          "properties": { "type": { "const": "not" }, "of": { "$ref": "#/$defs/condition" } }
+        },
+        {
+          "type": "object", "required": ["type", "key"], "additionalProperties": false,
+          "properties": { "type": { "const": "flag" }, "key": { "$ref": "#/$defs/flag_key" }, "value": { "type": "boolean", "default": true } }
+        },
+        {
+          "type": "object", "required": ["type", "item"], "additionalProperties": false,
+          "properties": { "type": { "const": "has_item" }, "item": { "$ref": "#/$defs/item_name" }, "qty": { "type": "integer", "minimum": 1, "default": 1 } },
+          "description": "True when the party's inventory (any owner) holds at least qty."
+        },
+        {
+          "type": "object", "required": ["type", "id", "status"], "additionalProperties": false,
+          "properties": { "type": { "const": "beat" }, "id": { "$ref": "#/$defs/beat_id" }, "status": { "enum": ["not_started", "active", "complete"] } }
+        },
+        {
+          "type": "object", "required": ["type", "instance_id"], "additionalProperties": false,
+          "properties": { "type": { "const": "enemy_dead" }, "instance_id": { "$ref": "#/$defs/instance_id" } },
+          "description": "True when that enemy has alive=false. A fled enemy is not dead."
+        },
+        {
+          "type": "object", "required": ["type", "room_id"], "additionalProperties": false,
+          "properties": { "type": { "const": "in_room" }, "room_id": { "$ref": "#/$defs/room_id" } }
+        },
+        {
+          "type": "object", "required": ["type", "feature_id", "state"], "additionalProperties": false,
+          "properties": { "type": { "const": "feature_state" }, "feature_id": { "$ref": "#/$defs/feature_id" }, "state": { "$ref": "#/$defs/feature_state" } },
+          "description": "True when the map feature is in that state, e.g. the door is open (by key, by force or by an effect)."
+        },
+        {
+          "type": "object", "required": ["type", "is"], "additionalProperties": false,
+          "properties": { "type": { "const": "mode" }, "is": { "$ref": "#/$defs/game_mode" } },
+          "description": "True when game_state.mode equals this, e.g. combat has started."
+        },
+        {
+          "type": "object", "required": ["type", "id", "status"], "additionalProperties": false,
+          "properties": { "type": { "const": "objective" }, "id": { "type": "string" }, "status": { "enum": ["hidden", "active", "complete", "failed"] } }
+        },
+        {
+          "type": "object", "required": ["type", "clue_id"], "additionalProperties": false,
+          "properties": { "type": { "const": "clue_found" }, "clue_id": { "type": "string" } }
+        },
+        {
+          "type": "object", "required": ["type"], "additionalProperties": false,
+          "properties": { "type": { "const": "player_dead" } },
+          "description": "True when the player character is dead. This is what the engine treats as game over (house rule: 0 HP = death)."
+        },
+        {
+          "type": "object", "required": ["type"], "additionalProperties": false,
+          "properties": { "type": { "const": "party_wiped" } },
+          "description": "True when every party member is dead. The engine already ends the game when the player dies, so prefer player_dead for defeat endings."
+        }
+      ]
+    },
+    "effect": {
+      "description": "A change the engine makes. Only the engine applies effects, and each one is logged as a state_change or other event.",
+      "oneOf": [
+        {
+          "type": "object", "required": ["type", "key", "value"], "additionalProperties": false,
+          "properties": { "type": { "const": "set_flag" }, "key": { "$ref": "#/$defs/flag_key" }, "value": { "type": "boolean" } }
+        },
+        {
+          "type": "object", "required": ["type", "item"], "additionalProperties": false,
+          "properties": {
+            "type": { "enum": ["give_item", "remove_item"] },
+            "item": { "$ref": "#/$defs/item_name" },
+            "qty": { "type": "integer", "minimum": 1, "default": 1 },
+            "owner_id": { "$ref": "#/$defs/instance_id", "description": "Default: the player character." }
+          }
+        },
+        {
+          "type": "object", "required": ["type", "feature_id", "state"], "additionalProperties": false,
+          "properties": { "type": { "const": "set_feature_state" }, "feature_id": { "$ref": "#/$defs/feature_id" }, "state": { "$ref": "#/$defs/feature_state" } },
+          "description": "Doors, chests, levers, traps: any map feature."
+        },
+        {
+          "type": "object", "required": ["type"], "additionalProperties": false,
+          "properties": {
+            "type": { "const": "start_combat" },
+            "surprised": { "type": "array", "items": { "$ref": "#/$defs/instance_id" } }
+          },
+          "description": "Starts combat with every living enemy in the room (the engine has no separate encounters). Usually not needed: awake enemies within 30 ft. start combat on their own."
+        },
+        {
+          "type": "object", "required": ["type", "instance_id"], "additionalProperties": false,
+          "properties": { "type": { "const": "wake_enemy" }, "instance_id": { "$ref": "#/$defs/instance_id" } },
+          "description": "Sets ai.awake = true on a sleeping enemy."
+        },
+        {
+          "type": "object", "required": ["type", "beat_id"], "additionalProperties": false,
+          "properties": { "type": { "enum": ["start_beat", "complete_beat"] }, "beat_id": { "$ref": "#/$defs/beat_id" } }
+        },
+        {
+          "type": "object", "required": ["type", "clue_id"], "additionalProperties": false,
+          "properties": { "type": { "const": "reveal_clue" }, "clue_id": { "type": "string" } }
+        },
+        {
+          "type": "object", "required": ["type", "objective_id", "status"], "additionalProperties": false,
+          "properties": { "type": { "const": "set_objective" }, "objective_id": { "type": "string" }, "status": { "enum": ["hidden", "active", "complete", "failed"] } }
+        },
+        {
+          "type": "object", "required": ["type", "npc_id", "attitude"], "additionalProperties": false,
+          "properties": { "type": { "const": "set_attitude" }, "npc_id": { "type": "string" }, "attitude": { "$ref": "#/$defs/attitude" } }
+        },
+        {
+          "type": "object", "required": ["type", "room_id"], "additionalProperties": false,
+          "properties": {
+            "type": { "const": "move_party" },
+            "room_id": { "$ref": "#/$defs/room_id", "description": "The engine loads data/rooms/<room_id>.json and logs a state_change on location.room_id." },
+            "x": { "type": "integer", "minimum": 0 },
+            "y": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object", "required": ["type", "ending_id"], "additionalProperties": false,
+          "properties": { "type": { "const": "end_game" }, "ending_id": { "type": "string" } }
+        }
+      ]
+    },
+    "narrator_block": {
+      "type": "object",
+      "required": ["scene_text"],
+      "additionalProperties": false,
+      "properties": {
+        "scene_text": { "type": "string", "description": "Original description the narrator may rephrase. Do not copy published module text." },
+        "allowed_facts": { "type": "array", "items": { "type": "string" }, "description": "Facts the narrator may state now." },
+        "secrets": {
+          "type": "array",
+          "description": "Facts the narrator must NOT reveal until the condition is true.",
+          "items": {
+            "type": "object", "required": ["fact", "reveal_when"], "additionalProperties": false,
+            "properties": { "fact": { "type": "string" }, "reveal_when": { "$ref": "#/$defs/condition" } }
+          }
+        },
+        "mood": { "type": "string" }
+      }
+    },
+    "beat": {
+      "type": "object",
+      "required": ["id", "title", "kind", "narrator"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/beat_id" },
+        "title": { "type": "string" },
+        "kind": { "enum": ["exploration", "social", "combat", "puzzle", "discovery", "rest", "cutscene"] },
+        "room_id": { "$ref": "#/$defs/room_id" },
+        "optional": { "type": "boolean", "default": false },
+        "available_when": { "$ref": "#/$defs/condition", "description": "Beat can start only when true. Omit = always available." },
+        "narrator": { "$ref": "#/$defs/narrator_block" },
+        "on_start": { "type": "array", "items": { "$ref": "#/$defs/effect" } },
+        "complete_when": { "$ref": "#/$defs/condition" },
+        "on_complete": { "type": "array", "items": { "$ref": "#/$defs/effect" } },
+        "next": { "type": "array", "items": { "$ref": "#/$defs/beat_id" }, "description": "Beats that become available after this one." },
+        "hints": { "type": "array", "items": { "type": "string" }, "description": "Shown if the player seems stuck." }
+      }
+    },
+    "npc": {
+      "type": "object",
+      "description": "Field names match data/npcs.json in the LLM layer (id, ref, name, attitude, personality, voice, goal, knows), so a story's NPCs can be written straight into that file. `topics` are story-only extras.",
+      "required": ["id", "name", "role", "attitude"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/instance_id", "description": "Instance id the NPC has in game state (a room file enemies[].id), e.g. ferol_sal_1. This is what talk.target_id and dialogue.speaker_id use." },
+        "ref": { "type": "string", "description": "Stat block id in enemies.json, if the NPC can fight." },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "attitude": { "$ref": "#/$defs/attitude", "description": "Starting attitude." },
+        "room_id": { "$ref": "#/$defs/room_id" },
+        "personality": { "type": "string" },
+        "voice": { "type": "string", "description": "Short note on how they talk, for the NPC voice." },
+        "goal": { "type": "string" },
+        "knows": { "type": "array", "items": { "type": "string" }, "description": "Facts the NPC will share whenever asked." },
+        "topics": {
+          "type": "array",
+          "description": "Facts the NPC shares only once a condition holds.",
+          "items": {
+            "type": "object",
+            "required": ["id", "prompt", "info"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "prompt": { "type": "string", "description": "What the player might ask or say, in plain words." },
+              "available_when": { "$ref": "#/$defs/condition" },
+              "check": {
+                "type": "object",
+                "required": ["skill", "dc"],
+                "additionalProperties": false,
+                "description": "Rolled by the engine, never the LLM. The talk action has no check yet.",
+                "properties": {
+                  "skill": { "$ref": "#/$defs/skill" },
+                  "dc": { "type": "integer", "minimum": 1, "maximum": 30 },
+                  "on_fail_attitude": { "$ref": "#/$defs/attitude" }
+                }
+              },
+              "info": { "type": "string", "description": "What the NPC reveals. The NPC voice may say it, not add to it." },
+              "effects": { "type": "array", "items": { "$ref": "#/$defs/effect" } }
+            }
+          }
+        }
+      }
+    },
+    "clue": {
+      "type": "object",
+      "required": ["id", "text"],
+      "additionalProperties": false,
+      "description": "Found through found_by, or revealed by a reveal_clue effect (then found_by can be left out).",
+      "properties": {
+        "id": { "type": "string", "pattern": "^clue_[a-z0-9_]+$" },
+        "text": { "type": "string" },
+        "found_by": {
+          "type": "object",
+          "required": ["object_id"],
+          "additionalProperties": false,
+          "properties": {
+            "object_id": { "type": "string", "description": "Map feature id or NPC id." },
+            "verb": { "$ref": "#/$defs/interact_verb", "description": "Found on a successful interact event with this verb. Default examine." },
+            "skill": { "$ref": "#/$defs/skill", "description": "Found on a successful check action with target_id = object_id and this skill." },
+            "dc": { "type": "integer", "minimum": 1, "maximum": 30 },
+            "auto": { "type": "boolean", "description": "true = found without a roll when the verb is used." }
+          }
+        },
+        "effects": { "type": "array", "items": { "$ref": "#/$defs/effect" } }
+      }
+    },
+    "objective": {
+      "type": "object",
+      "required": ["id", "text", "initial"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^obj_[a-z0-9_]+$" },
+        "text": { "type": "string", "description": "Short line the player sees in the quest panel." },
+        "initial": { "enum": ["hidden", "active"] },
+        "optional": { "type": "boolean", "default": false },
+        "complete_when": { "$ref": "#/$defs/condition" },
+        "fail_when": { "$ref": "#/$defs/condition" }
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "required": ["id", "on", "effects"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^trg_[a-z0-9_]+$" },
+        "on": {
+          "type": "object",
+          "required": ["event"],
+          "additionalProperties": false,
+          "properties": {
+            "event": {
+              "enum": ["rejected", "combat_start", "initiative", "turn_start", "move", "attack", "saving_throw", "ability_check", "damage", "heal", "condition", "spell_cast", "concentration", "resource", "death", "interact", "dialogue", "rest", "combat_end", "state_change"],
+              "description": "Same type names as events in action_event.schema.json. Room entry = state_change with field location.room_id."
+            },
+            "match": {
+              "type": "object",
+              "description": "Top-level event fields the event must equal, e.g. {\"target_id\": \"giant_frog_1\"}, {\"object_id\": \"cellar_door\", \"verb\": \"open\", \"result\": \"success\"} or {\"field\": \"location.room_id\", \"value\": \"demo_cellar\"}.",
+              "additionalProperties": { "type": ["string", "number", "boolean"] }
+            }
+          }
+        },
+        "when": { "$ref": "#/$defs/condition" },
+        "effects": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/effect" } },
+        "once": { "type": "boolean", "default": true }
+      }
+    },
+    "ending": {
+      "type": "object",
+      "required": ["id", "type", "when", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^end_[a-z0-9_]+$" },
+        "type": { "enum": ["victory", "partial", "defeat"], "description": "victory sets game_state.mode to victory, defeat to game_over." },
+        "when": { "$ref": "#/$defs/condition" },
+        "text": { "type": "string", "description": "Closing narration the narrator may rephrase." }
+      }
+    }
+  }
+}

@@ -56,7 +56,7 @@ class Rules:
         elif t == "check":
             self.ability_check(log, actor_id, action["ability"], action.get("skill"),
                                dc=self._feature_dc(action.get("target_id")),
-                               intent=action.get("intent"))
+                               intent=action.get("intent"), target_id=action.get("target_id"))
         else:
             log.reject(actor_id, "unknown_command",
                        f"The rules module does not resolve '{t}' actions.")
@@ -137,7 +137,7 @@ class Rules:
                  dc=dc, roll=roll, success=success, source=source)
         return success
 
-    def ability_check(self, log, actor_id, ability, skill=None, dc=10, intent=None):
+    def ability_check(self, log, actor_id, ability, skill=None, dc=10, intent=None, target_id=None):
         actor = self.get(actor_id)
         st = self.stats(actor)
         if skill and not ability:
@@ -149,8 +149,8 @@ class Rules:
             dis.append("condition")
         roll, _ = self.dice.d20(self.data.check_bonus(st, ability, skill), combine_mode(adv, dis))
         success = roll["total"] >= dc
-        log.emit("ability_check", actor_id=actor_id, ability=ability, skill=skill, dc=dc,
-                 roll=roll, success=success, intent=intent)
+        log.emit("ability_check", actor_id=actor_id, target_id=target_id, ability=ability,
+                 skill=skill, dc=dc, roll=roll, success=success, intent=intent)
         return success
 
     # ================================================================ attacks

@@ -24,6 +24,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
+# This folder may sit inside the main repo (josh-llm-layer/) or be merged into its
+# root. Shared files (schemas/, data/characters.json ...) are looked up here first,
+# then one level up, so both layouts work.
+SEARCH_ROOTS = [ROOT, ROOT.parent]
+
+
+def find_file(rel):
+    """First existing ROOT/rel or ROOT.parent/rel. Falls back to ROOT/rel (so the
+    error message names the expected place) when neither exists."""
+    for base in SEARCH_ROOTS:
+        p = base / rel
+        if p.exists():
+            return p
+    return ROOT / rel
 
 DEFAULT_MODELS = {
     "anthropic": {"parser": "claude-haiku-5-5", "narrator": "claude-haiku-5-5"},

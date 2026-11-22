@@ -175,6 +175,7 @@ def test_ability_check_uses_feature_dc(state):
                                    "target_id": "door_east", "intent": "force the door"})
     assert_valid(ev)
     assert ev[0]["dc"] == 13 and ev[0]["roll"]["total"] == 10 + 3 + 2 and ev[0]["success"]
+    assert ev[0]["target_id"] == "door_east"
 
 
 def test_rests(state):
