@@ -1,3 +1,0 @@
-{"type": "rejected", "seq": 0, "actor_id": "barbarian_1", "reason_code": "unknown_command", "message": "You can only dodge during combat.", "turn": 0}
-{"type": "rejected", "seq": 0, "actor_id": "barbarian_1", "reason_code": "unknown_command", "message": "You can only dash during combat.", "turn": 0}
-{"type": "rejected", "seq": 0, "actor_id": "barbarian_1", "reason_code": "unknown_command", "message": "You can only dodge during combat.", "turn": 0}
