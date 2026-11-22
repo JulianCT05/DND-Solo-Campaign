@@ -1,0 +1,298 @@
+{
+  "rules_edition": "srd_5.2.1",
+  "license": "SRD 5.2.1, CC-BY-4.0",
+  "enemies": [
+    {
+      "id": "animated_armor",
+      "name": "Animated Armor",
+      "size": "Medium",
+      "type": "construct",
+      "alignment": "unaligned",
+      "ac": 18,
+      "hp": 33,
+      "speed": 25,
+      "stats": {
+        "str": 14,
+        "dex": 11,
+        "con": 13,
+        "int": 1,
+        "wis": 3,
+        "cha": 1
+      },
+      "damage_immunities": [
+        "poison",
+        "psychic"
+      ],
+      "condition_immunities": [
+        "blinded",
+        "charmed",
+        "deafened",
+        "exhaustion",
+        "frightened",
+        "paralyzed",
+        "petrified",
+        "poisoned"
+      ],
+      "senses": "blindsight 60 ft. (blind beyond this radius), passive Perception 6",
+      "actions": [
+        {
+          "name": "Slam",
+          "atk_bonus": 4,
+          "damage": "1d6+2 bludgeoning"
+        }
+      ]
+    },
+    {
+      "id": "animated_knife",
+      "name": "Animated Kitchen Knife",
+      "size": "Tiny",
+      "type": "construct",
+      "alignment": "unaligned",
+      "ac": 17,
+      "hp": 10,
+      "speed": 30,
+      "stats": {
+        "str": 12,
+        "dex": 15,
+        "con": 11,
+        "int": 1,
+        "wis": 5,
+        "cha": 1
+      },
+      "damage_immunities": [
+        "poison",
+        "psychic"
+      ],
+      "condition_immunities": [
+        "blinded",
+        "charmed",
+        "deafened",
+        "exhaustion",
+        "frightened",
+        "paralyzed",
+        "petrified",
+        "poisoned"
+      ],
+      "senses": "blindsight 60 ft., passive Perception 7",
+      "actions": [
+        {
+          "name": "Slash",
+          "atk_bonus": 5,
+          "damage": "1d4+3 slashing"
+        }
+      ]
+    },
+    {
+      "id": "srd_zombie",
+      "name": "Human Zombie",
+      "size": "Medium",
+      "type": "undead",
+      "alignment": "neutral evil",
+      "ac": 8,
+      "hp": 22,
+      "speed": 20,
+      "stats": {
+        "str": 13,
+        "dex": 6,
+        "con": 16,
+        "int": 3,
+        "wis": 6,
+        "cha": 5
+      },
+      "saving_throws": {
+        "wis": 0
+      },
+      "damage_immunities": [
+        "poison"
+      ],
+      "condition_immunities": [
+        "poisoned"
+      ],
+      "senses": "darkvision 60 ft., passive Perception 8",
+      "traits": [
+        {
+          "name": "Undead Fortitude",
+          "description": "If damage reduces the zombie to 0 hit points, it must make a Con save (DC 5 + damage taken) unless damage is radiant or critical. On success, drops to 1 HP instead."
+        }
+      ],
+      "actions": [
+        {
+          "name": "Slam",
+          "atk_bonus": 3,
+          "damage": "1d6+1 bludgeoning"
+        }
+      ]
+    },
+    {
+      "id": "damaged_flesh_golem",
+      "name": "Damaged Flesh Golem",
+      "size": "Medium",
+      "type": "construct",
+      "alignment": "neutral evil",
+      "ac": 9,
+      "hp": 5,
+      "max_hp": 93,
+      "speed": 30,
+      "stats": {
+        "str": 19,
+        "dex": 9,
+        "con": 18,
+        "int": 6,
+        "wis": 10,
+        "cha": 5
+      },
+      "damage_immunities": [
+        "lightning",
+        "poison"
+      ],
+      "condition_immunities": [
+        "charmed",
+        "exhaustion",
+        "frightened",
+        "paralyzed",
+        "petrified",
+        "poisoned"
+      ],
+      "senses": "darkvision 60 ft., passive Perception 10",
+      "traits": [
+        {
+          "name": "Berserk Active",
+          "description": "The golem is perpetually berserk due to damage and attacks the nearest creature it sees."
+        },
+        {
+          "name": "Damaged State",
+          "description": "Has only 5 HP remaining and can only make a single arm attack per turn."
+        }
+      ],
+      "actions": [
+        {
+          "name": "Slam",
+          "atk_bonus": 7,
+          "damage": "2d8+4 bludgeoning"
+        }
+      ]
+    },
+    {
+      "id": "ferol_sal",
+      "name": "Ferol Sal",
+      "size": "Medium",
+      "type": "undead",
+      "alignment": "neutral evil",
+      "ac": 14,
+      "hp": 45,
+      "speed": 30,
+      "stats": {
+        "str": 14,
+        "dex": 14,
+        "con": 16,
+        "int": 16,
+        "wis": 13,
+        "cha": 15
+      },
+      "skills": {
+        "perception": 3,
+        "stealth": 4,
+        "arcana": 5
+      },
+      "damage_immunities": [
+        "poison"
+      ],
+      "condition_immunities": [
+        "poisoned"
+      ],
+      "languages": [
+        "Archaic Draconic",
+        "Archaic Elven"
+      ],
+      "senses": "darkvision 60 ft., passive Perception 13",
+      "actions": [
+        {
+          "name": "Life Drain",
+          "atk_bonus": 4,
+          "damage": "1d6+2 bludgeoning plus 2d6 necrotic"
+        }
+      ]
+    },
+    {
+      "id": "giant_octopus",
+      "name": "Giant Octopus",
+      "size": "Large",
+      "type": "beast",
+      "alignment": "unaligned",
+      "ac": 11,
+      "hp": 52,
+      "speed": "10 ft., swim 60 ft.",
+      "stats": {
+        "str": 17,
+        "dex": 13,
+        "con": 13,
+        "int": 4,
+        "wis": 10,
+        "cha": 4
+      },
+      "senses": "darkvision 60 ft., passive Perception 10",
+      "actions": [
+        {
+          "name": "Tentacles",
+          "atk_bonus": 5,
+          "damage": "2d6+3 bludgeoning",
+          "notes": "Target is grappled (escape DC 13)"
+        }
+      ]
+    },
+    {
+      "id": "giant_crab",
+      "name": "Giant Crab",
+      "size": "Medium",
+      "type": "beast",
+      "alignment": "unaligned",
+      "ac": 15,
+      "hp": 13,
+      "speed": "30 ft., swim 30 ft.",
+      "stats": {
+        "str": 13,
+        "dex": 15,
+        "con": 11,
+        "int": 1,
+        "wis": 9,
+        "cha": 3
+      },
+      "senses": "blindsight 30 ft., passive Perception 9",
+      "actions": [
+        {
+          "name": "Claw",
+          "atk_bonus": 3,
+          "damage": "1d6+1 bludgeoning",
+          "notes": "Target is grappled (escape DC 11)"
+        }
+      ]
+    },
+    {
+      "id": "giant_frog",
+      "name": "Giant Frog",
+      "size": "Medium",
+      "type": "beast",
+      "alignment": "unaligned",
+      "ac": 11,
+      "hp": 18,
+      "speed": "30 ft., swim 30 ft.",
+      "stats": {
+        "str": 12,
+        "dex": 13,
+        "con": 11,
+        "int": 2,
+        "wis": 10,
+        "cha": 3
+      },
+      "senses": "darkvision 30 ft., passive Perception 12",
+      "actions": [
+        {
+          "name": "Bite",
+          "atk_bonus": 3,
+          "damage": "1d6+1 piercing",
+          "notes": "PLACEHOLDER stats so example_game_state.json loads; E'niyah to confirm"
+        }
+      ]
+    }
+  ]
+}

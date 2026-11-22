@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0.0",
+  "turn": 8,
+  "actor_id": "barbarian_1",
+  "status": "accepted",
+  "events": [
+    {
+      "type": "attack",
+      "seq": 0,
+      "actor_id": "barbarian_1",
+      "target_id": "giant_frog_1",
+      "weapon": "Greataxe",
+      "roll": {
+        "expr": "1d20+5",
+        "dice": [
+          17
+        ],
+        "kept": [
+          17
+        ],
+        "mode": "normal",
+        "modifier": 5,
+        "total": 22
+      },
+      "target_ac": 11,
+      "outcome": "hit",
+      "mastery_applied": "Cleave"
+    },
+    {
+      "type": "damage",
+      "seq": 1,
+      "actor_id": "barbarian_1",
+      "target_id": "giant_frog_1",
+      "roll": {
+        "expr": "1d12+5",
+        "dice": [
+          8
+        ],
+        "modifier": 5,
+        "total": 13
+      },
+      "amount": 13,
+      "damage_type": "slashing",
+      "critical": false,
+      "modifier_applied": "none",
+      "source": "Greataxe",
+      "hp_after": 5
+    },
+    {
+      "type": "rejected",
+      "seq": 2,
+      "actor_id": "barbarian_1",
+      "reason_code": "no_action_left",
+      "message": "You have no action left this turn."
+    }
+  ]
+}

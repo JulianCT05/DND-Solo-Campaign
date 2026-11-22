@@ -1,0 +1,43 @@
+{
+  "_about": "Parser test set. Starter cases written against data/rooms/demo_cellar.json and data/example_game_state.json; Julian and E'Niyah extend it to ~50 as the real rooms land. Each case: text, the player's character, where the state comes from, and what the parser should produce. 'expect.actions' is matched in order; each expected action only has to match the keys it lists (so {\"type\": \"move\"} accepts any square). 'expect.clarify': true means the parser should ask a question instead of acting.",
+  "_state_sources": {
+    "room": "new game in that room, seed 7, party at its spawn points, exploration mode",
+    "state_file": "a saved game state JSON under data/ (combat in progress)"
+  },
+  "cases": [
+    {"id": "b01", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "I rage", "expect": {"actions": [{"type": "use_feature", "feature": "rage"}]}},
+    {"id": "b02", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "I rage and chop the frog with my greataxe", "expect": {"actions": [{"type": "use_feature", "feature": "rage"}, {"type": "move"}, {"type": "attack", "target_id": "giant_frog_1", "weapon": "Greataxe"}]}},
+    {"id": "b03", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "Throw a javelin at the zombie", "expect": {"actions": [{"type": "attack", "target_id": "zombie_1", "weapon": "Javelin", "modifiers": ["thrown"]}]}},
+    {"id": "b04", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "attack", "expect": {"clarify": true}},
+    {"id": "b05", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "I walk 10 feet north", "expect": {"actions": [{"type": "move", "to": {"x": 1, "y": 4}}]}},
+    {"id": "b06", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "kick the cellar door open", "expect": {"actions": [{"type": "interact", "object_id": "cellar_door", "verb": "force"}]}},
+    {"id": "b07", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "I examine the old chest", "expect": {"actions": [{"type": "interact", "object_id": "old_chest", "verb": "examine"}]}},
+    {"id": "b08", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "drink my healing potion", "expect": {"actions": [{"type": "use_item", "item": "Potion of Healing"}]}},
+    {"id": "b09", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "I cast fireball at the frog", "expect": {"clarify": true}},
+    {"id": "b10", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "attack the dragon", "expect": {"clarify": true}},
+    {"id": "b11", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "\"Show yourself, coward!\" I yell at the knife", "expect": {"actions": [{"type": "talk", "target_id": "knife_1", "text": "Show yourself, coward!"}]}},
+    {"id": "b12", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "How does reckless attack work?", "expect": {"actions": [{"type": "rules_question"}]}},
+    {"id": "b13", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "I look around the cellar for anything strange", "expect": {"actions": [{"type": "check", "ability": "wis", "skill": "perception"}]}},
+    {"id": "b14", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "let's take a short rest", "expect": {"actions": [{"type": "rest", "kind": "short"}]}},
+    {"id": "b15", "character": "barbarian_orc_berserker", "room": "demo_cellar", "text": "I try to sneak along the wall", "expect": {"actions": [{"type": "hide"}]}},
+
+    {"id": "c01", "character": "cleric_dwarf_life", "room": "demo_cellar", "text": "Sacred flame on the zombie", "expect": {"actions": [{"type": "cast", "spell_id": "sacred_flame", "target_ids": ["zombie_1"]}]}},
+    {"id": "c02", "character": "cleric_dwarf_life", "room": "demo_cellar", "text": "I hurl a guiding bolt at the giant frog", "expect": {"actions": [{"type": "cast", "spell_id": "guiding_bolt", "target_ids": ["giant_frog_1"]}]}},
+    {"id": "c03", "character": "cleric_dwarf_life", "room": "demo_cellar", "text": "cast cure wounds on myself", "expect": {"actions": [{"type": "cast", "spell_id": "cure_wounds", "target_ids": ["cleric_1"]}]}},
+    {"id": "c04", "character": "cleric_dwarf_life", "room": "demo_cellar", "text": "Guiding bolt at the frog using a 2nd level slot", "expect": {"actions": [{"type": "cast", "spell_id": "guiding_bolt", "target_ids": ["giant_frog_1"], "slot_level": 2}]}},
+    {"id": "c05", "character": "cleric_dwarf_life", "room": "demo_cellar", "text": "I smack the knife with my warhammer", "expect": {"actions": [{"type": "move"}, {"type": "attack", "target_id": "knife_1", "weapon": "Warhammer"}]}},
+    {"id": "c06", "character": "cleric_dwarf_life", "room": "demo_cellar", "text": "pray", "expect": {"clarify": true}},
+    {"id": "c07", "character": "cleric_dwarf_life", "room": "demo_cellar", "text": "I'll heal the barbarian", "expect": {"actions": [{"type": "cast", "spell_id": "cure_wounds", "target_ids": ["barbarian_1"]}]}},
+
+    {"id": "r01", "character": "ranger_wood_elf_hunter", "room": "demo_cellar", "text": "shoot the frog with my longbow", "expect": {"actions": [{"type": "attack", "target_id": "giant_frog_1", "weapon": "Longbow"}]}},
+    {"id": "r02", "character": "ranger_wood_elf_hunter", "room": "demo_cellar", "text": "Hunter's mark the zombie then shoot it", "expect": {"actions": [{"type": "cast", "spell_id": "hunters_mark", "target_ids": ["zombie_1"]}, {"type": "attack", "target_id": "zombie_1", "weapon": "Longbow"}]}},
+    {"id": "r03", "character": "ranger_wood_elf_hunter", "room": "demo_cellar", "text": "I move next to the cleric", "expect": {"actions": [{"type": "move"}]}},
+    {"id": "r04", "character": "ranger_wood_elf_hunter", "room": "demo_cellar", "text": "I dash toward the chest", "expect": {"actions": [{"type": "dash"}, {"type": "move"}]}},
+
+    {"id": "x01", "character": "barbarian_orc_berserker", "state_file": "example_game_state.json", "text": "I swing my greataxe at the frog", "expect": {"actions": [{"type": "move"}, {"type": "attack", "target_id": "giant_frog_1", "weapon": "Greataxe"}]}},
+    {"id": "x02", "character": "barbarian_orc_berserker", "state_file": "example_game_state.json", "text": "I'm done, end my turn", "expect": {"actions": [{"type": "end_turn"}]}},
+    {"id": "x03", "character": "barbarian_orc_berserker", "state_file": "example_game_state.json", "text": "Disengage and back off", "expect": {"actions": [{"type": "disengage"}, {"type": "move"}]}},
+    {"id": "x04", "character": "barbarian_orc_berserker", "state_file": "example_game_state.json", "text": "Get up close and recklessly hack at the frog", "expect": {"actions": [{"type": "move"}, {"type": "attack", "target_id": "giant_frog_1", "modifiers": ["reckless"]}]}},
+    {"id": "x05", "character": "barbarian_orc_berserker", "state_file": "example_game_state.json", "text": "try to break down the east door", "expect": {"actions": [{"type": "interact", "object_id": "door_east", "verb": "force"}]}}
+  ]
+}

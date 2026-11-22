@@ -1,0 +1,192 @@
+{
+  "schema_version": "1.0.0",
+  "session_id": "demo-001",
+  "rules_edition": "srd_5.2.1",
+  "mode": "combat",
+  "turn_counter": 7,
+  "location": {
+    "room_id": "room_3",
+    "light": "dim"
+  },
+  "party": [
+    {
+      "id": "barbarian_1",
+      "ref": "barbarian_orc_berserker",
+      "name": "Orc Barbarian",
+      "hp": 44,
+      "max_hp": 44,
+      "temp_hp": 0,
+      "alive": true,
+      "position": {
+        "x": 3,
+        "y": 4
+      },
+      "conditions": [],
+      "controller": "player",
+      "effects": [
+        {
+          "name": "Rage",
+          "rounds_left": 9
+        }
+      ],
+      "turn": {
+        "action": true,
+        "bonus_action": true,
+        "reaction": true,
+        "movement_left_ft": 30
+      },
+      "resources": {
+        "hit_dice_left": 3,
+        "spell_slots": {},
+        "uses": {
+          "rage": {
+            "max": 3,
+            "used": 1,
+            "recharge": "long_rest"
+          }
+        }
+      }
+    },
+    {
+      "id": "cleric_1",
+      "ref": "cleric_dwarf_life",
+      "name": "Dwarf Cleric",
+      "hp": 27,
+      "max_hp": 27,
+      "temp_hp": 0,
+      "alive": true,
+      "position": {
+        "x": 2,
+        "y": 4
+      },
+      "conditions": [],
+      "controller": "engine_ally",
+      "concentrating_on": {
+        "spell_id": "bless",
+        "target_ids": [
+          "barbarian_1"
+        ],
+        "rounds_left": 8
+      },
+      "resources": {
+        "hit_dice_left": 3,
+        "spell_slots": {
+          "1": {
+            "max": 4,
+            "used": 1
+          },
+          "2": {
+            "max": 2,
+            "used": 0
+          }
+        },
+        "prepared_spells": [
+          "bless",
+          "cure_wounds"
+        ],
+        "uses": {}
+      }
+    }
+  ],
+  "enemies": [
+    {
+      "id": "giant_frog_1",
+      "ref": "giant_frog",
+      "name": "Giant Frog",
+      "hp": 18,
+      "max_hp": 18,
+      "temp_hp": 0,
+      "alive": true,
+      "position": {
+        "x": 5,
+        "y": 4
+      },
+      "conditions": [],
+      "ai": {
+        "tactic": "melee_rush",
+        "awake": true,
+        "target_id": "barbarian_1"
+      }
+    }
+  ],
+  "map": {
+    "width": 8,
+    "height": 6,
+    "cell_ft": 5,
+    "terrain": [
+      "########",
+      "#......#",
+      "#..~~..#",
+      "#......#",
+      "#......D",
+      "########"
+    ],
+    "legend": {
+      "D": "door",
+      "~": "difficult"
+    },
+    "features": [
+      {
+        "id": "door_east",
+        "kind": "door",
+        "position": {
+          "x": 7,
+          "y": 4
+        },
+        "state": "locked",
+        "dc": 13
+      }
+    ]
+  },
+  "combat": {
+    "round": 2,
+    "initiative_order": [
+      {
+        "id": "barbarian_1",
+        "initiative": 15
+      },
+      {
+        "id": "giant_frog_1",
+        "initiative": 11
+      },
+      {
+        "id": "cleric_1",
+        "initiative": 8
+      }
+    ],
+    "active_index": 0
+  },
+  "inventory": [
+    {
+      "item": "Javelin",
+      "qty": 5,
+      "owner_id": "barbarian_1"
+    }
+  ],
+  "flags": {
+    "door_unlocked": false
+  },
+  "summary": {
+    "text": "The party entered the flooded cellar and woke a giant frog.",
+    "updated_at_turn": 5
+  },
+  "recent_events": [
+    {
+      "type": "attack",
+      "seq": 0,
+      "actor_id": "giant_frog_1",
+      "target_id": "barbarian_1",
+      "weapon": "Bite",
+      "roll": {
+        "expr": "1d20+3",
+        "dice": [
+          9
+        ],
+        "modifier": 3,
+        "total": 12
+      },
+      "target_ac": 14,
+      "outcome": "miss"
+    }
+  ]
+}

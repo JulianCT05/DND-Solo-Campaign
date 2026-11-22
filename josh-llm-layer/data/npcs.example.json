@@ -1,0 +1,18 @@
+{
+  "_about": "Template for E'Niyah. Copy to data/npcs.json and fill in one entry per NPC. Match by 'id' (instance id in the room file) or 'ref' (enemies.json id). The NPC voice may only share facts listed in 'knows'. Values below are placeholders, not story content.",
+  "npcs": [
+    {
+      "id": "npc_example_1",
+      "ref": "ferol_sal",
+      "name": "[NPC name]",
+      "attitude": "neutral",
+      "personality": "[two or three traits, e.g. wary, proud, quick to bargain]",
+      "voice": "[how they talk, e.g. short clipped sentences, never uses names]",
+      "goal": "[what they want from the party]",
+      "knows": [
+        "[a fact they will share if asked]",
+        "[another fact]"
+      ]
+    }
+  ]
+}

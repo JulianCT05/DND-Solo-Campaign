@@ -1,0 +1,508 @@
+{
+  "rules_edition": "srd_5.2.1",
+  "license": "SRD 5.2.1, CC-BY-4.0",
+  "characters": [
+    {
+      "name": "Eldrin",
+      "species": "Dwarf",
+      "class": "Cleric",
+      "subclass": "Life Domain",
+      "level": 3,
+      "ac": 16,
+      "hp": 27,
+      "hp_formula": "8 x Level + 3",
+      "hit_dice": "d8 (x Level)",
+      "speed": 30,
+      "size": "Small",
+      "initiative": 2,
+      "passive_perception": 13,
+      "proficiency_bonus": 2,
+      "abilities": {
+        "str": {
+          "score": 14,
+          "mod": 2
+        },
+        "dex": {
+          "score": 8,
+          "mod": -1
+        },
+        "con": {
+          "score": 14,
+          "mod": 2
+        },
+        "int": {
+          "score": 10,
+          "mod": 0
+        },
+        "wis": {
+          "score": 17,
+          "mod": 3
+        },
+        "cha": {
+          "score": 12,
+          "mod": 1
+        }
+      },
+      "saving_throw_proficiencies": [
+        "Wisdom",
+        "Charisma"
+      ],
+      "skill_proficiencies": [
+        "Religion",
+        "Animal Handling",
+        "Insight",
+        "Medicine",
+        "Perception",
+        "Survival"
+      ],
+      "weapon_proficiencies": [
+        "simple weapons",
+        "martial weapons"
+      ],
+      "tool_proficiencies": [
+        "Herbalism Kit"
+      ],
+      "armor_training": [
+        "Light",
+        "Medium",
+        "Heavy",
+        "Shields"
+      ],
+      "weapons": [
+        {
+          "name": "Warhammer",
+          "atk_bonus": 4,
+          "damage": "1d8+2 Bludgeoning",
+          "notes": ""
+        },
+        {
+          "name": "Sacred Flame",
+          "dc": 13,
+          "damage": "1d8 Radiant",
+          "notes": "60 ft. Range"
+        }
+      ],
+      "class_features": [
+        {
+          "level": 2,
+          "name": "Channel Divinity",
+          "description": "2 Uses, Regain 1x after Short Rest; all after Long Rest. Divine Spark: target in 30 ft. heals 1d8 + 3, or takes same Necrotic or Radiant damage; Spell Save DC CON save for half damage. Turn Undead: Undead within 30 ft., Spell Save DC WIS save or Frightened and Incapacitated for 1 min. or until damaged."
+        },
+        {
+          "level": 3,
+          "name": "Preserve Life",
+          "description": "Distribute 25HP among Bloodied targets within 30 ft."
+        },
+        {
+          "level": 3,
+          "name": "Disciple of Life",
+          "description": "Healing Spells add 2x Spell Slot level to HP recovered."
+        }
+      ],
+      "species_traits": [
+        {
+          "level": 1,
+          "name": "Dwarf Traits",
+          "description": "Darkvision (120 feet); Dwarven Resilience (Resistance + Advantage against Poison); Dwarven Toughness (extra hit points, included); Stonecunning (gain Tremorsense 60 ft. for 10 min. as a bonus action, 3x/Long Rest)"
+        }
+      ],
+      "feats": [
+        {
+          "level": 1,
+          "name": "Healer",
+          "description": "Healing kit allows treated creature to use one Hit Point Die to recover HP. Also, dice for healing (kit or magic) reroll 1 results."
+        }
+      ],
+      "spellcasting": {
+        "ability": "Wisdom",
+        "modifier": 3,
+        "save_dc": 13,
+        "attack_bonus": 5,
+        "spell_slots": {
+          "level_1": 4,
+          "level_2": 2
+        },
+        "cantrips": [
+          "Guidance",
+          "Sacred Flame",
+          "Thaumaturgy"
+        ],
+        "prepared_spells": {
+          "level_1": [
+            "Bless",
+            "Cure Wounds",
+            "Detect Magic",
+            "Guiding Bolt",
+            "Sanctuary",
+            "Shield of Faith"
+          ],
+          "level_2": [
+            "Aid",
+            "Spiritual Weapon",
+            "Lesser Restoration",
+            "Silence"
+          ]
+        }
+      },
+      "languages": [
+        "Common",
+        "Dwarvish",
+        "Halfling"
+      ],
+      "equipment": [
+        "scale mail (AC 14)",
+        "shield (AC +2)",
+        "warhammer",
+        "mace",
+        "quarterstaff",
+        "priest's pack (backpack, a blanket, 10 candles, a tinderbox, an alms box, 2 blocks of incense, a censer, vestments, 2 days rations, waterskin)",
+        "herbalism kit (clippers, mortar and pestle, pouches and vials of herbs)",
+        "bedroll",
+        "set of common clothes",
+        "set of traveler's clothes",
+        "holy symbol: amulet",
+        "book (philosophy)",
+        "three flasks of oil",
+        "1 potion of healing"
+      ],
+      "coins": {
+        "gp": 15
+      },
+      "id": "cleric_dwarf_life",
+      "damage_resistances": [
+        "poison"
+      ]
+    },
+    {
+      "name": "Grruk",
+      "species": "Orc",
+      "class": "Barbarian",
+      "subclass": "Path of the Berserker",
+      "level": 3,
+      "ac": 14,
+      "hp": 44,
+      "hp_formula": "11 x Level + 5",
+      "hit_dice": "d12 (x Level)",
+      "speed": 30,
+      "size": "Medium",
+      "initiative": 2,
+      "passive_perception": 11,
+      "proficiency_bonus": 2,
+      "abilities": {
+        "str": {
+          "score": 17,
+          "mod": 3
+        },
+        "dex": {
+          "score": 14,
+          "mod": 2
+        },
+        "con": {
+          "score": 14,
+          "mod": 2
+        },
+        "int": {
+          "score": 8,
+          "mod": -1
+        },
+        "wis": {
+          "score": 10,
+          "mod": 0
+        },
+        "cha": {
+          "score": 10,
+          "mod": 0
+        }
+      },
+      "saving_throw_proficiencies": [
+        "Strength",
+        "Constitution"
+      ],
+      "skill_proficiencies": [
+        "Athletics",
+        "Intimidation",
+        "Survival"
+      ],
+      "weapon_proficiencies": [
+        "simple weapons",
+        "martial weapons"
+      ],
+      "tool_proficiencies": [
+        "gaming set (dice)"
+      ],
+      "armor_training": [
+        "Light",
+        "Medium",
+        "Shields"
+      ],
+      "weapons": [
+        {
+          "name": "Greataxe",
+          "atk_bonus": 5,
+          "damage": "1d12+3 slashing",
+          "notes": "Cleave"
+        },
+        {
+          "name": "Handaxe",
+          "atk_bonus": 5,
+          "damage": "1d6+3 slashing",
+          "notes": "Thrown 20/60; Vex"
+        },
+        {
+          "name": "Javelin",
+          "atk_bonus": 5,
+          "damage": "1d6+3 piercing",
+          "notes": "Thrown 30/120"
+        }
+      ],
+      "class_features": [
+        {
+          "level": 1,
+          "name": "Unarmored Defense",
+          "description": "AC while not wearing armor = 10 + DEX mod + CON mod."
+        },
+        {
+          "level": 1,
+          "name": "Weapon Mastery",
+          "description": "Cleave: On hit, once per turn attack second target within 5 ft. for 1d12 slashing damage. Vex: On hit, gain adv. on next attack on target before end of next turn."
+        },
+        {
+          "level": 1,
+          "name": "Rage",
+          "description": "3/Long Rest. Bonus action to begin, lasts 10 minutes. Advantage on STR checks and saves, +2 bonus on STR-based melee damage, resistance to bludgeoning, piercing, and slashing damage. No spellcasting or concentration."
+        },
+        {
+          "level": 2,
+          "name": "Danger Sense",
+          "description": "Advantage on DEX saves against effects you can see."
+        },
+        {
+          "level": 2,
+          "name": "Reckless Attack",
+          "description": "Advantage on attack rolls during your turn, but attack rolls against you have advantage until your next turn."
+        },
+        {
+          "level": 3,
+          "name": "Frenzy",
+          "description": "When raging and using Reckless Attack, the first weapon hit on your turn deals extra damage equal to your Barbarian level (3 damage)."
+        }
+      ],
+      "species_traits": [
+        {
+          "level": 1,
+          "name": "Orc Traits",
+          "description": "Adrenaline Rush (Dash as a Bonus Action and gain Temp. HP equal to Prof. Bonus, a number of times per Long/Short Rest equal to Prof. Bonus); Darkvision 120 ft.; Relentless Endurance (When reduced to 0 HP, drop to 1 HP instead once per Long Rest)."
+        }
+      ],
+      "feats": [
+        {
+          "level": 1,
+          "name": "Tough",
+          "description": "Gain 2 extra HP per level."
+        }
+      ],
+      "spellcasting": {
+        "ability": "None",
+        "modifier": 0,
+        "save_dc": 0,
+        "attack_bonus": 0,
+        "spell_slots": {},
+        "cantrips": [],
+        "prepared_spells": {}
+      },
+      "languages": [
+        "Common",
+        "Dwarvish",
+        "Infernal"
+      ],
+      "equipment": [
+        "Greataxe",
+        "Two (2) handaxes",
+        "Five (5) javelins",
+        "Spear",
+        "Shortbow",
+        "20 arrows",
+        "Explorer's pack (backpack, bedroll, mess kit, tinderbox, 10 torches, 10 days' rations, waterskin, 50 feet of hempen rope)",
+        "Gaming set (dice set)",
+        "Set of traveler's clothes",
+        "Healer's kit (bandages, salves, splints)",
+        "Quiver",
+        "1 potion of healing"
+      ],
+      "coins": {
+        "gp": 10
+      },
+      "id": "barbarian_orc_berserker",
+      "damage_resistances": []
+    },
+    {
+      "name": "Wood Elf Ranger",
+      "species": "Wood Elf",
+      "class": "Ranger",
+      "subclass": "Hunter",
+      "level": 3,
+      "ac": 15,
+      "hp": 28,
+      "hp_formula": "8 x Level + 4",
+      "hit_dice": "d10 (x Level)",
+      "speed": 35,
+      "size": "Medium",
+      "initiative": 3,
+      "passive_perception": 14,
+      "proficiency_bonus": 2,
+      "abilities": {
+        "str": {
+          "score": 12,
+          "mod": 1
+        },
+        "dex": {
+          "score": 17,
+          "mod": 3
+        },
+        "con": {
+          "score": 14,
+          "mod": 2
+        },
+        "int": {
+          "score": 10,
+          "mod": 0
+        },
+        "wis": {
+          "score": 14,
+          "mod": 2
+        },
+        "cha": {
+          "score": 8,
+          "mod": -1
+        }
+      },
+      "saving_throw_proficiencies": [
+        "Strength",
+        "Dexterity"
+      ],
+      "skill_proficiencies": [
+        "Animal Handling",
+        "Perception",
+        "Survival"
+      ],
+      "weapon_proficiencies": [
+        "simple weapons",
+        "martial weapons"
+      ],
+      "tool_proficiencies": [
+        "Cartographer's Tools"
+      ],
+      "armor_training": [
+        "Light",
+        "Medium",
+        "Heavy",
+        "Shields"
+      ],
+      "weapons": [
+        {
+          "name": "Longbow",
+          "atk_bonus": 5,
+          "damage": "1d8+3 Piercing",
+          "notes": "120/600 ft., Slow"
+        },
+        {
+          "name": "Shortsword",
+          "atk_bonus": 5,
+          "damage": "1d6+3 Slashing",
+          "notes": "Vex"
+        }
+      ],
+      "class_features": [
+        {
+          "level": 1,
+          "name": "Favored Enemy",
+          "description": "Cast Hunter's Mark 2/Long Rest without expending a spell slot."
+        },
+        {
+          "level": 1,
+          "name": "Weapon Masteries",
+          "description": "Slow: On damage, target's speed reduced by 10 ft. Vex: On hit, adv. on next hit against target."
+        },
+        {
+          "level": 2,
+          "name": "Fighting Style: Archery",
+          "description": "+2 to Ranged Attacks with weapons."
+        },
+        {
+          "level": 3,
+          "name": "Hunter's Lore",
+          "description": "Learn resistance, immunity, vulnerability of Hunter's Mark target."
+        },
+        {
+          "level": 3,
+          "name": "Hunter's Prey",
+          "description": "Pick one after Long/Short Rest: Colossus Slayer (once per turn, deal 1d8 extra damage to target with missing HP) or Horde Breaker (once per turn, make another attack against a different creature within 5 ft. of target)."
+        }
+      ],
+      "species_traits": [
+        {
+          "level": 1,
+          "name": "Wood Elf Traits",
+          "description": "Darkvision 60 ft.; Elven Lineage (Druidcraft cantrip, Longstrider, Pass without Trace each once per Long Rest or via spell slot); Fey Ancestry (Adv. vs. Charmed); Trance (4 hrs. as 8 hrs. sleep)."
+        }
+      ],
+      "feats": [
+        {
+          "level": 1,
+          "name": "Sharpshooter",
+          "description": "No disadv. on Ranged Attacks in melee, ignore half and three-quarters cover, no disadv. for long range."
+        }
+      ],
+      "spellcasting": {
+        "ability": "Wisdom",
+        "modifier": 2,
+        "save_dc": 12,
+        "attack_bonus": 4,
+        "spell_slots": {
+          "level_1": 3
+        },
+        "cantrips": [
+          "Guidance",
+          "Produce Flame",
+          "Druidcraft"
+        ],
+        "prepared_spells": {
+          "level_1": [
+            "Hunter's Mark",
+            "Longstrider",
+            "Entangle",
+            "Hail of Thorns",
+            "Cure Wounds",
+            "Ensnaring Strike",
+            "Fog Cloud"
+          ]
+        }
+      },
+      "languages": [
+        "Common",
+        "Elvish",
+        "Giant"
+      ],
+      "equipment": [
+        "Studded leather armor (AC 12)",
+        "Scimitar",
+        "Two (2) shortswords",
+        "Longbow",
+        "20 arrows",
+        "Explorer's pack (backpack, bedroll, mess kit, tinderbox, 10 torches, 10 days' rations, waterskin, 50 feet of hempen rope)",
+        "Bedroll",
+        "Belt pouch",
+        "Set of traveler's clothes",
+        "Druidic focus: sprig of mistletoe",
+        "Quiver",
+        "Tent (two-person)",
+        "1 potion of healing"
+      ],
+      "coins": {
+        "gp": 15
+      },
+      "id": "ranger_wood_elf_hunter",
+      "damage_resistances": []
+    }
+  ]
+}

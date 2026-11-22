@@ -1,0 +1,122 @@
+{
+  "request": {
+    "schema_version": "1.0.0",
+    "actor_id": "barbarian_1",
+    "raw_text": "attack the zombie",
+    "confidence": 0.6,
+    "actions": [
+      {
+        "type": "move",
+        "to": {
+          "x": 10,
+          "y": 5
+        }
+      },
+      {
+        "type": "attack",
+        "target_id": "zombie_1",
+        "weapon": "Greataxe"
+      }
+    ]
+  },
+  "parser_source": "keyword",
+  "turn_results": [
+    {
+      "schema_version": "1.0.0",
+      "turn": 6,
+      "actor_id": "barbarian_1",
+      "status": "accepted",
+      "events": [
+        {
+          "type": "move",
+          "seq": 0,
+          "actor_id": "barbarian_1",
+          "path": [
+            {
+              "x": 7,
+              "y": 6
+            },
+            {
+              "x": 8,
+              "y": 6
+            },
+            {
+              "x": 9,
+              "y": 5
+            },
+            {
+              "x": 10,
+              "y": 5
+            }
+          ],
+          "feet_used": 20
+        },
+        {
+          "type": "attack",
+          "seq": 1,
+          "actor_id": "barbarian_1",
+          "target_id": "zombie_1",
+          "weapon": "Greataxe",
+          "roll": {
+            "expr": "1d20+5+1d4",
+            "dice": [
+              15,
+              3
+            ],
+            "kept": [
+              15,
+              3
+            ],
+            "mode": "normal",
+            "modifier": 5,
+            "total": 23
+          },
+          "target_ac": 8,
+          "outcome": "hit"
+        },
+        {
+          "type": "damage",
+          "seq": 2,
+          "actor_id": "barbarian_1",
+          "target_id": "zombie_1",
+          "roll": {
+            "expr": "1d12+3+2",
+            "dice": [
+              3
+            ],
+            "modifier": 5,
+            "total": 8
+          },
+          "amount": 8,
+          "damage_type": "slashing",
+          "critical": false,
+          "modifier_applied": "none",
+          "source": "Greataxe",
+          "hp_after": 14
+        }
+      ]
+    }
+  ],
+  "narrations": [
+    {
+      "turn": 6,
+      "actor_id": "barbarian_1",
+      "status": "accepted",
+      "text": "You move 20 ft. You attack Human Zombie with Greataxe: a hit. Human Zombie takes slashing damage from Greataxe; now lightly wounded.",
+      "source": "template",
+      "dice": [
+        "Grruk -> Human Zombie (Greataxe): 1d20+5+1d4 [15, 3] +5 = 23 vs AC 8 -> HIT",
+        "  damage to Human Zombie: 1d12+3+2 [3] +5 = 8 -> 8 slashing, HP 14"
+      ],
+      "facts": [
+        "You move 20 ft.",
+        "You attack Human Zombie with Greataxe: a hit.",
+        "Human Zombie takes slashing damage from Greataxe; now lightly wounded."
+      ]
+    }
+  ],
+  "npc_lines": [],
+  "rules_answer": null,
+  "question": null,
+  "state": "(the full game state after the turn, same as GET /games/{id})"
+}

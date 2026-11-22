@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0.0",
+  "actor_id": "barbarian_1",
+  "raw_text": "I rage and chop the frog with my greataxe",
+  "confidence": 0.93,
+  "actions": [
+    {
+      "type": "use_feature",
+      "feature": "rage"
+    },
+    {
+      "type": "attack",
+      "target_id": "giant_frog_1",
+      "weapon": "Greataxe"
+    }
+  ]
+}
