@@ -1,152 +1,153 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, actionRequest } from './services/api';
 import { parseCommand } from './commands';
-import GameMap from './components/GameMap';
-import StatusPanel from './components/StatusPanel';
-import DiceLog, { describeEvent } from './components/DiceLog';
-import ChatPanel from './components/ChatPanel';
+import StoryPanel from './components/StoryPanel';
+import CharacterBoard from './components/CharacterBoard';
+import TurnTimeline from './components/TurnTimeline';
+import ActionComposer from './components/ActionComposer';
 import './App.css';
 
-// The endpoint contracts are known; service return-envelope shapes still need confirmation.
 function getState(payload) {
-  if (payload?.session_id && payload?.map && payload?.party) return payload;
-  for (const item of [payload?.state, payload?.game_state, payload?.new_state, payload?.updated_state, payload?.game]) {
-    if (item?.session_id && item?.map && item?.party) return item;
+  if (payload?.session_id && payload?.party && payload?.map) return payload;
+  for (const value of [payload?.state, payload?.game_state, payload?.updated_state, payload?.new_state, payload?.game]) {
+    if (value?.session_id && value?.party && value?.map) return value;
   }
   return null;
 }
-function extractResults(payload) {
-  const candidates = [payload?.turn_results, payload?.results, payload?.turn_result, payload?.result];
-  const results = candidates.find(x => x != null);
-  if (results) return Array.isArray(results) ? results : [results];
-  if (payload?.events && payload?.status) return [payload];
-  return [];
+function getResults(payload) {
+  const found = [payload?.turn_results, payload?.results, payload?.turn_result, payload?.result].find(x => x != null);
+  if (found) return Array.isArray(found) ? found : [found];
+  return payload?.events ? [payload] : [];
 }
-function toEntries(value) {
-  if (Array.isArray(value)) return value.map(v => typeof v === 'string' ? {id:v,label:v} : {
-    id: v.id ?? v.ref ?? v.character_id ?? v.room_id ?? v.key ?? v.name,
-    label: v.name ?? v.title ?? v.label ?? v.id ?? v.ref ?? v.room_id ?? v.character_id
-  }).filter(x=>x.id);
-  if (value && typeof value==='object') return Object.entries(value).map(([id,v])=>({id,label:typeof v==='string'?v:(v?.name ?? v?.title ?? id)}));
-  return [];
-}
-function pointsFrom(data) {
-  const candidates = [data, data?.reachable, data?.cells, data?.positions, data?.tiles];
-  for (const source of candidates) {
-    if (!Array.isArray(source)) continue;
-    const p=source.map(v => Array.isArray(v) ? {x:Number(v[0]),y:Number(v[1])} : v?.position ? v.position : v).filter(v=>Number.isInteger(v?.x)&&Number.isInteger(v?.y));
-    if (p.length || source.length===0) return p;
+// Preserve event order while splitting reactions / automatic turns by the actor
+// that actually performed each event, not only the submitted player action.
+function splitTurnsByActor(results) {
+  const cards = [];
+  for (const result of results) {
+    let card = null;
+    for (const event of result.events || []) {
+      const actor = event.actor_id || card?.actor_id || result.actor_id;
+      if (!card || card.actor_id !== actor) {
+        card = { actor_id: actor, turn: result.turn, status: result.status, events: [] };
+        cards.push(card);
+      }
+      card.events.push(event);
+    }
+    if (!(result.events || []).length) cards.push({ ...result, events: [] });
   }
+  return cards;
+}
+
+function toOptions(payload, keys) {
+  const value = Array.isArray(payload) ? payload : keys.map(k => payload?.[k]).find(Array.isArray) || payload;
+  if (Array.isArray(value)) return value.map(item => typeof item === 'string' ? { id: item, label: item } : {
+    id: item.id ?? item.ref ?? item.character_id ?? item.room_id ?? item.session_id ?? item.key ?? item.name,
+    label: item.name ?? item.title ?? item.label ?? item.id ?? item.ref ?? item.room_id ?? item.session_id,
+  }).filter(item=>item.id);
+  if (value && typeof value === 'object') return Object.entries(value).map(([id, v])=>({id, label:typeof v === 'string' ? v : v?.name ?? v?.title ?? id}));
   return [];
 }
 
 export default function App() {
-  const [characters,setCharacters]=useState([]);
-  const [rooms,setRooms]=useState([]);
-  const [character,setCharacter]=useState('barbarian_orc_berserker');
-  const [room,setRoom]=useState('demo_cellar');
-  const [state,setState]=useState(null);
-  const [busy,setBusy]=useState(false);
-  const [error,setError]=useState('');
-  const [lines,setLines]=useState([{role:'system',text:'Welcome to DND Solo Play. Start a game to load the dungeon.'}]);
-  const [events,setEvents]=useState([]);
-  const [reachable,setReachable]=useState([]);
-  const [saves,setSaves]=useState([]);
-  const [selectedSave,setSelectedSave]=useState('');
+  const [characters, setCharacters] = useState([]);
+  const [rooms, setRooms] = useState([]);
+  const [characterId, setCharacterId] = useState('barbarian_orc_berserker');
+  const [roomId, setRoomId] = useState('demo_cellar');
+  const [game, setGame] = useState(null);
+  const [turns, setTurns] = useState([]);
+  const [latestEvents, setLatestEvents] = useState([]);
+  const [selectedTarget, setSelectedTarget] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [savedGames, setSavedGames] = useState([]);
+  const [selectedSave, setSelectedSave] = useState('');
+  const idCounter = useRef(0);
 
-  const player=state?.party?.find(p=>p.controller==='player') ?? state?.party?.[0] ?? null;
-  const activeId=state?.combat?.initiative_order?.[state.combat.active_index]?.id;
-  const activeActor=[...(state?.party || []),...(state?.enemies || [])].find(c=>c.id===activeId);
-  const isPlayersTurn=state?.mode!=='combat' || activeId===player?.id;
-  const canAct=!!state && !!player?.alive && isPlayersTurn && !['game_over','victory'].includes(state.mode);
-  const sessionId=state?.session_id;
+  const player = game?.party?.find(c => c.controller === 'player') || game?.party?.[0];
+  const activeId = game?.combat?.initiative_order?.[game.combat.active_index]?.id;
+  const yourTurn = game?.mode !== 'combat' || activeId === player?.id;
+  const canAct = !!game && !!player?.alive && yourTurn && !['victory', 'game_over'].includes(game.mode);
 
-  useEffect(()=>{
-    Promise.allSettled([api.characters(),api.rooms(),api.saves()]).then(([c,r,s])=>{
-      if(c.status==='fulfilled'){const entries=toEntries(c.value);setCharacters(entries);if(entries.length && !entries.some(e=>e.id==='barbarian_orc_berserker'))setCharacter(entries[0].id);}
-      if(r.status==='fulfilled'){const entries=toEntries(r.value);setRooms(entries);if(entries.length && !entries.some(e=>e.id==='demo_cellar'))setRoom(entries[0].id);}
-      if(s.status==='fulfilled')setSaves(toEntries(s.value));
-      if(c.status==='rejected')setError(`Could not fetch characters: ${c.reason.message}`);
+  useEffect(() => {
+    Promise.allSettled([api.characters(),api.rooms(),api.saves()]).then(([c,r,s]) => {
+      if (c.status === 'fulfilled') {
+        const options = toOptions(c.value, ['characters', 'pregens']);
+        setCharacters(options);
+        if (options.length && !options.some(x=>x.id==='barbarian_orc_berserker')) setCharacterId(options[0].id);
+      }
+      if (r.status === 'fulfilled') {
+        const options = toOptions(r.value, ['rooms']);
+        setRooms(options);
+        if (options.length && !options.some(x=>x.id==='demo_cellar')) setRoomId(options[0].id);
+      }
+      if (s.status === 'fulfilled') setSavedGames(toOptions(s.value,['games','saves']));
+      if (c.status === 'rejected') setError(`Cannot load characters: ${c.reason.message}`);
     });
-  },[]);
-
-  useEffect(()=>{
-    if (!sessionId || !player || !canAct) {setReachable([]);return;}
-    let disposed=false;
-    api.reachable(sessionId,player.id).then(data=>{if(!disposed)setReachable(pointsFrom(data));}).catch(()=>{if(!disposed)setReachable([]);});
-    return ()=>{disposed=true};
-  },[sessionId,player?.id,state?.turn_counter,state?.mode,state?.combat?.active_index,canAct]);
-
-  const pushLine=useCallback((role,text)=>setLines(old=>[...old,{role,text}].slice(-100)),[]);
+  }, []);
 
   async function newGame() {
-    setBusy(true);setError('');
+    setBusy(true); setError(''); setFeedback('');
     try {
-      const result=await api.start(character,room);
-      const next=getState(result);
-      if(!next)throw new Error('POST /games returned a different JSON envelope than expected. Please share its response from /docs.');
-      setState(next);setEvents(next.recent_events || []);
-      setLines([{role:'system',text:next.summary?.text || `You enter ${next.location?.room_id || room}. The adventure begins.`}]);
-    } catch(e){setError(e.message);}finally{setBusy(false);}
-  }
-  async function loadGame() {
-    if(!selectedSave)return;
-    setBusy(true);setError('');
-    try {
-      const payload=await api.load(selectedSave);
-      const next=getState(payload) || getState(await api.state(selectedSave));
-      if(!next)throw new Error('Could not read a game state from the load response.');
-      setState(next);setEvents(next.recent_events || []);setLines([{role:'system',text:next.summary?.text || 'Saved game loaded.'}]);
-    } catch(e){setError(e.message)}finally{setBusy(false)}
-  }
-  async function saveGame() {
-    if(!sessionId)return;
-    setBusy(true);setError('');
-    try {await api.save(sessionId);pushLine('system','Game saved.');setSaves(toEntries(await api.saves()));}
-    catch(e){setError(e.message)}finally{setBusy(false)}
-  }
-  async function sendActions(actions,rawText='') {
-    if(!canAct || !sessionId || !player)return;
-    setBusy(true);setError('');
-    try {
-      const payload=await api.action(sessionId,actionRequest(player.id,actions,rawText));
-      const results=extractResults(payload);
-      const newEvents=results.flatMap(r=>r.events || []);
-      const next=getState(payload) || getState(await api.state(sessionId));
-      if(!next)throw new Error('The backend did not return a recognizable game state.');
-      setState(next);
-      setEvents(old=>[...old,...newEvents].slice(-200));
-      const rejected=results.find(r=>r.status==='rejected'||r.status==='needs_clarification');
-      if (rejected) pushLine('system',newEvents.find(e=>e.type==='rejected')?.message || rejected.narration_hint || rejected.status);
-      else if(newEvents.length)pushLine('system',newEvents.map(describeEvent).join(' · '));
-      else pushLine('system','Action submitted; state refreshed.');
-      // Do not fabricate LLM narration: integrate Josh's narrator API here later.
-    }catch(e){setError(e.message);pushLine('system',`Action failed: ${e.message}`)}finally{setBusy(false)}
-  }
-  function onMapClick(pos) {
-    if(!canAct || busy)return;
-    const enemy=state.enemies.find(c=>c.alive&&c.position?.x===pos.x&&c.position?.y===pos.y);
-    if(enemy){pushLine('player',`Attack ${enemy.name}`);sendActions([{type:'attack',target_id:enemy.id}],`Attack ${enemy.name}`);return;}
-    const feature=state.map.features?.find(f=>f.state!=='hidden'&&f.position?.x===pos.x&&f.position?.y===pos.y);
-    if(feature && !reachable.some(p=>p.x===pos.x&&p.y===pos.y)){
-      pushLine('system',`Feature: ${feature.kind} (${feature.id}). To interact, type "open ${feature.id}" or another supported verb.`);return;
-    }
-    const possible=reachable.some(p=>p.x===pos.x&&p.y===pos.y);
-    if(state.mode==='combat' && !possible){pushLine('system','That tile is not marked reachable. Choose a green square.');return;}
-    pushLine('player',`Move to ${pos.x}, ${pos.y}`);
-    sendActions([{type:'move',to:pos}],`Move to ${pos.x}, ${pos.y}`);
-  }
-  function onSend(text) {
-    pushLine('player',text);
-    try {sendActions(parseCommand(text,state),text);}catch(e){pushLine('system',e.message);}
+      const result = await api.start(characterId, roomId);
+      const next = getState(result);
+      if (!next) throw new Error('The server returned an unexpected game state. Check POST /games in /docs.');
+      setGame(next); setSelectedTarget(''); setLatestEvents(next.recent_events || []); setTurns([]);
+      setFeedback('Your adventure has started. The story comes from the engine game state.');
+    } catch(e) { setError(e.message); } finally { setBusy(false); }
   }
 
-  const heading=useMemo(()=>state?.location?.room_id?.replaceAll('_',' ') || 'The Adventure Awaits',[state?.location?.room_id]);
+  async function submitActions(actions, rawText = '') {
+    if (!canAct || busy || !player || !game?.session_id) return;
+    setBusy(true); setError(''); setFeedback('');
+    try {
+      const payload = await api.action(game.session_id, actionRequest(player.id, actions, rawText));
+      const results = getResults(payload);
+      const events = results.flatMap(r=>r.events || []);
+      const state = getState(payload) || getState(await api.state(game.session_id));
+      if (!state) throw new Error('The engine response did not contain a valid game state.');
+      setGame(state);
+      setLatestEvents(events);
+      if (results.length) {
+        setTurns(old => [...old, ...splitTurnsByActor(results).map(r => ({...r,localId:++idCounter.current}))].slice(-120));
+      } else if (events.length) {
+        setTurns(old => [...old, { localId:++idCounter.current, actor_id: player.id, events, status:'accepted' }].slice(-120));
+      }
+      const problem = events.find(e=>e.type==='rejected');
+      if (problem) setFeedback(problem.message);
+      else if (results.some(r=>r.status==='needs_clarification')) setFeedback('The parser needs clarification.');
+      else if (!events.length) setFeedback('Action received; the game state was refreshed.');
+      else setFeedback(`${results.length || 1} character turn result(s) displayed below.`);
+    } catch(e) { setError(e.message); } finally { setBusy(false); }
+  }
+  function typedCommand(text) {
+    try { submitActions(parseCommand(text, game), text); }
+    catch(e) { setFeedback(e.message); }
+  }
+  async function saveGame() {
+    if (!game?.session_id) return;
+    setBusy(true); setError('');
+    try { await api.save(game.session_id); setFeedback('Game saved.'); setSavedGames(toOptions(await api.saves(),['games','saves'])); }
+    catch(e) { setError(e.message); } finally { setBusy(false); }
+  }
+  async function loadGame() {
+    if (!selectedSave) return;
+    setBusy(true); setError(''); setFeedback('');
+    try {
+      const payload = await api.load(selectedSave);
+      const next = getState(payload) || getState(await api.state(selectedSave));
+      if (!next) throw new Error('The server did not return a game state.');
+      setGame(next); setTurns([]); setSelectedTarget(''); setLatestEvents(next.recent_events || []);
+      setFeedback('Saved game loaded. The timeline starts fresh; it does not invent previous events.');
+    } catch(e) { setError(e.message); } finally { setBusy(false); }
+  }
+
   return <div className="app-shell">
-    <header className="topbar"><div><div className="eyebrow">2024 SRD 5.2.1 • SOLO CAMPAIGN</div><h1>⚔ DND Solo Play</h1></div><div className="top-actions"><span className="pill">{state?.mode || 'Not started'}</span><button onClick={saveGame} disabled={!state || busy}>Save Game</button></div></header>
-    <section className="setup-bar"><label>Character <select value={character} onChange={e=>setCharacter(e.target.value)}>{(characters.length?characters:[{id:character,label:character}]).map(c=><option key={c.id} value={c.id}>{c.label}</option>)}</select></label><label>Room <select value={room} onChange={e=>setRoom(e.target.value)}>{(rooms.length?rooms:[{id:room,label:room}]).map(r=><option key={r.id} value={r.id}>{r.label}</option>)}</select></label><button className="primary" onClick={newGame} disabled={busy}>New Game</button><label>Saved Games <select value={selectedSave} onChange={e=>setSelectedSave(e.target.value)}><option value="">Choose save</option>{saves.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}</select></label><button onClick={loadGame} disabled={busy||!selectedSave}>Load</button></section>
+    <header className="topbar"><div><div className="eyebrow">2024 SRD 5.2.1 · TEXT-BASED ADVENTURE</div><h1>DND <span>Solo Play</span></h1><p className="tagline">Your story. One move at a time.</p></div><div className="header-right"><span className="pill">{game?.mode?.replaceAll('_',' ') || 'Not started'}</span>{game?.combat && <span className="round-pill">Round {game.combat.round}</span>}</div></header>
+    <div className="setup-bar"><label>Character<select value={characterId} onChange={e=>setCharacterId(e.target.value)}>{(characters.length ? characters : [{id:characterId,label:characterId}]).map(o=><option key={o.id} value={o.id}>{o.label}</option>)}</select></label><label>Adventure room<select value={roomId} onChange={e=>setRoomId(e.target.value)}>{(rooms.length ? rooms : [{id:roomId,label:roomId}]).map(o=><option key={o.id} value={o.id}>{o.label}</option>)}</select></label><button className="primary" onClick={newGame} disabled={busy}>New Game</button><label>Saved game<select value={selectedSave} onChange={e=>setSelectedSave(e.target.value)}><option value="">Select save</option>{savedGames.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}</select></label><button onClick={loadGame} disabled={busy || !selectedSave}>Load</button><button onClick={saveGame} disabled={busy || !game}>Save</button></div>
     {error && <div className="error-banner" role="alert">{error}</div>}
-    <main className="main-layout"><section className="panel map-panel"><div className="panel-title"><div><div className="eyebrow">DUNGEON MAP</div><h2>{heading}</h2></div><span className="dim">{state?.map ? `${state.map.width}×${state.map.height} · ${state.map.cell_ft} ft/cell`:''}</span></div><GameMap state={state} reachable={reachable} activePlayerId={player?.id} busy={busy||!canAct} onCell={onMapClick}/><div className="legend"><span><b className="dot blue"/>Player</span><span><b className="dot red"/>Enemy</span><span><b className="dot green"/>Ally</span><span><b className="dot reach"/>Reachable</span><span><b className="dot purple"/>Area origin</span></div><div className="map-help">Click a green square to move or a red enemy token to attack. The engine validates all actions. Spell area markers show origins only, not exact shapes.</div><div className="action-row"><button onClick={()=>sendActions([{type:'end_turn'}],'End turn')} disabled={!canAct||busy}>End Turn</button><button onClick={()=>sendActions([{type:'dodge'}],'Dodge')} disabled={!canAct||busy}>Dodge</button><button onClick={()=>sendActions([{type:'dash'}],'Dash')} disabled={!canAct||busy}>Dash</button></div></section><aside className="panel status-panel"><div className="panel-title"><div className="eyebrow">HERO STATUS</div></div><StatusPanel state={state} player={player} activeActor={activeActor}/></aside><section className="panel chat-panel"><div className="panel-title"><div className="eyebrow">COMMANDS & STORY</div></div><ChatPanel lines={lines} onSend={onSend} disabled={!canAct} busy={busy}/></section><section className="panel dice-panel"><div className="panel-title"><div className="eyebrow">ENGINE EVENT & DICE LOG</div></div><DiceLog events={events}/></section></main>
-    <footer>All dice, HP, rules, and movement decisions come from the Python engine. The frontend displays the returned facts.</footer>
+    {feedback && <div className="feedback" role="status">{feedback}</div>}
+    <div className="dashboard"><div className="column-main"><StoryPanel state={game} latestEvents={latestEvents}/><TurnTimeline state={game} turns={turns}/></div><div className="column-side"><CharacterBoard state={game} selectedTarget={selectedTarget} onSelectTarget={c=>setSelectedTarget(c.id)}/><ActionComposer state={game} selectedTarget={selectedTarget} busy={busy} disabled={!canAct} onSubmit={submitActions} onCommand={typedCommand}/></div></div>
+    <footer>Game outcomes, moves, HP and rolls are produced by the Python engine; the GUI only presents them. Josh's AI narration can be connected once its API is available.</footer>
   </div>;
 }
